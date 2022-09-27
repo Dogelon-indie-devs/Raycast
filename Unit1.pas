@@ -94,6 +94,11 @@ implementation
 
 // loosely following tutorial from https://www.youtube.com/watch?v=fc3nnG2CG8U
 
+procedure Breakpoint_placeholder;
+begin
+
+end;
+
 procedure Place_edges_on_screen_borders;
 begin
   var index:= 0;
@@ -147,7 +152,6 @@ begin
   TTile.Create(TPoint.Create(5,3));
   TTile.Create(TPoint.Create(5,4));
   TTile.Create(TPoint.Create(5,5));
-  Viewport3D1.Repaint;
 end;
 
 procedure Draw_intersection(intersect: TPointF);
@@ -224,16 +228,43 @@ begin
 
     const tolerance = 0.0001;
 
+    var angle_list:= TStringList.Create;
+    try
+      for var angle in all_vector_angles do
+        angle_list.Add(angle.ToString);
+      angle_list.SaveToFile('angles.txt');
+    finally
+      angle_list.Free;
+    end;
+
+    var ray_angles:= TStringList.Create;
+    try
+      for var ray in rays do
+        begin
+          var ray_as_point:= TPointF(ray);
+          var ray_angle:= ArcTan2(ray_as_point.Y,ray_as_point.X);
+          ray_angles.Add(ray_angle.ToString);
+        end;
+      ray_angles.SaveToFile('ray_angles.txt');
+    finally
+      ray_angles.Free;
+    end;
+
     for var angle in all_vector_angles do
       begin
-        var previous_shortest_ray:= TVector.Create(999999,999999);
+        var previous_shortest_ray:= TVector.Create(Infinity,Infinity);
 
         for var ray in rays do
           begin
             var ray_as_point:= TPointF(ray);
             var ray_angle:= ArcTan2(ray_as_point.Y,ray_as_point.X);
 
-            if abs(ray_angle - angle) > tolerance then continue;
+            var identical_angles:= ray_angle = angle;
+            var within_tolerance:= abs(ray_angle - angle) < tolerance;
+            if not identical_angles AND within_tolerance then
+              Breakpoint_placeholder;
+
+            if not(identical_angles OR within_tolerance) then continue;
 
             if ray.Length < previous_shortest_ray.Length then
               begin
@@ -245,6 +276,19 @@ begin
               rays.Remove(ray);
           end;
       end;
+
+    var ray_angles2:= TStringList.Create;
+    try
+      for var ray in rays do
+        begin
+          var ray_as_point:= TPointF(ray);
+          var ray_angle:= ArcTan2(ray_as_point.Y,ray_as_point.X);
+          ray_angles2.Add(ray_angle.ToString);
+        end;
+      ray_angles2.SaveToFile('ray_angles2.txt');
+    finally
+      ray_angles2.Free;
+    end;
 
   finally
     all_vector_angles.Free;
@@ -598,11 +642,6 @@ begin
 
   self.touches_edges[location]:= edge;
   edges.Add(edge);
-end;
-
-procedure Breakpoint_placeholder;
-begin
-
 end;
 
 procedure TTile.Try_to_create_edge(direction: TDirection);
