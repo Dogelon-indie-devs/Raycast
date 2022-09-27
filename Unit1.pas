@@ -8,6 +8,7 @@ uses
   System.UITypes,
   System.Classes,
   System.Variants,
+  System.Math,
   System.Math.Vectors,
   Generics.Collections,
   Generics.Defaults,
@@ -23,7 +24,7 @@ uses
   FMX.Objects,
   FMX.Utils,
 
-  Math;
+  IntersectMath;
 
 type
   TForm1 = class(TForm)

@@ -1,4 +1,4 @@
-unit Math;
+unit IntersectMath;
 
 interface
 

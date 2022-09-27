@@ -4,7 +4,7 @@ uses
   System.StartUpCopy,
   FMX.Forms,
   Unit1 in 'Unit1.pas' {Form1},
-  Math in 'Math.pas';
+  IntersectMath in 'IntersectMath.pas';
 
 {$R *.res}
 
