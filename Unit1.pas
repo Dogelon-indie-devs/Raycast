@@ -71,6 +71,7 @@ var
   Form1: TForm1;
   painting_tiles: boolean;
   tile_size: integer;
+  tile_count: integer;
 
   tiles: array of array of TTile;
   edges: TObjectList<TEdge>;
@@ -85,6 +86,7 @@ implementation
 
 procedure TForm1.FormCreate(Sender: TObject);
 begin
+  tile_count:= 0;
   setLength(tiles, 20, 20);
   tile_size:= round(Form1.Viewport3D1.Width / Grid_size); // 40x40;
   edges:= TObjectList<TEdge>.Create(true);
@@ -138,7 +140,7 @@ end;
 procedure Add_point_to_polygon(polygon: TPolygon; point: TPoint);
 begin
   setLength(polygon,length(polygon)+1);
-  polygon[length(polygon)]:= point;
+  polygon[length(polygon)-1]:= point;
 end;
 
 function Find_attached_edge(point: TPoint; polyEdges: TObjectList<TEdge>): TEdge;
@@ -173,7 +175,8 @@ begin
       repeat
         edge:= Find_attached_edge(edge.ends, polyEdges);
         if edge=nil then
-          raise Exception.Create('Disconnected edge!');
+          break;
+          //raise Exception.Create('Disconnected edge!');
 
         Add_point_to_polygon(polygon,edge.ends);
 
@@ -257,7 +260,13 @@ end;
 
 procedure TForm1.Timer1Timer(Sender: TObject);
 begin
-  form1.Text1.text:= 'Edge count: '+edges.Count.ToString;
+  form1.Text1.text:=
+    'Statistics: ' +sLineBreak+
+    'Tiles: '+Tile_count.ToString +sLineBreak+
+    'Edges: '+Edges.count.ToString +sLineBreak+
+    'Vertices: '+Vertices.count.ToString +sLineBreak+
+    'Polygons: '+Polygons.count.ToString;
+
   form1.Text1.Repaint;
 end;
 
@@ -316,6 +325,7 @@ begin
   Draw_Tiles;
   Draw_Edges;
   Draw_Vertices;
+  Draw_Polygons;
   form1.Viewport3D1.Canvas.EndScene;
 end;
 
@@ -326,6 +336,7 @@ begin
   self.origin:= TPoint.Create(X*tile_size,Y*tile_size);
   tiles[position.X,position.Y]:= self;
   Update_all_tiles;
+  inc(tile_count);
 end;
 
 procedure TTile.Remove(position: TPoint);
@@ -333,6 +344,7 @@ begin
   tiles[position.X,position.Y].Free;
   tiles[position.X,position.Y]:= nil;
   Update_all_tiles;
+  dec(tile_count);
 end;
 
 function TTile.Get_neighbor(direction: TDirection): TTile;

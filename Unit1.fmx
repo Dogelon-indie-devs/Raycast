@@ -25,9 +25,10 @@ object Form1: TForm1
     Position.X = 608.000000000000000000
     Position.Y = 32.000000000000000000
     Size.Width = 153.000000000000000000
-    Size.Height = 97.000000000000000000
+    Size.Height = 145.000000000000000000
     Size.PlatformDefault = False
     TextSettings.FontColor = claYellow
+    TextSettings.HorzAlign = Leading
     object Timer1: TTimer
       Interval = 100
       OnTimer = Timer1Timer
