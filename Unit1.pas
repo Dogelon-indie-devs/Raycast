@@ -67,6 +67,7 @@ type
 
 const
   Grid_size = 20;
+  Form_size = 800;
 
 var
   Form1: TForm1;
@@ -78,6 +79,7 @@ var
   edges: TObjectList<TEdge>;
   vertices: TList<TPoint>;
   polygons: TList<TPolygon>;
+  rays: TList<TVector>;
 
 implementation
 
@@ -93,6 +95,33 @@ begin
   edges:= TObjectList<TEdge>.Create(true);
   vertices:= TList<TPoint>.Create;
   polygons:= TList<TPolygon>.Create;
+  rays:= TList<TVector>.Create;
+end;
+
+procedure Defines_all_rays;
+begin
+  for var vertex in vertices do
+    begin
+      var ray:= TVector.Create(vertex);
+      rays.Add(ray);
+    end;
+end;
+
+procedure Draw_Rays;
+begin
+  Rays.Clear;
+  Defines_all_rays;
+
+  var yellowBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
+  yellowBrush.Thickness:=1;
+
+  var vector_to_center:= TVector.Create(TPointF.Create(Form_size,Form_size));
+  var center_point:= TPointF(vector_to_center);
+
+  var top_left_point:= TPointF.Zero;
+
+  for var ray in rays do
+    form1.Viewport3D1.Canvas.DrawLine(top_left_point,TPointF(ray),10,yellowBrush);
 end;
 
 function Vertex_already_known(tested_vertex: TPoint): boolean;
@@ -138,10 +167,6 @@ begin
       end;
 end;
 
-procedure Add_point_to_polygon(polygon: TPolygon; point: TPoint);
-begin
-end;
-
 function Find_attached_edge(last_endpoint: TPoint; polyEdges: TObjectList<TEdge>): TEdge;
 begin
   for var edge in polyEdges do
@@ -158,6 +183,14 @@ end;
 
 procedure Create_polygons_from_edges;
 var new_endpoint: TPoint;
+    polygon: TPolygon;
+
+  procedure Add_point_to_polygon(point: TPoint);
+  begin
+    setLength(polygon,length(polygon)+1);
+    polygon[length(polygon)-1]:= point;
+  end;
+
 begin
   polygons.Clear;
 
@@ -168,11 +201,10 @@ begin
     begin
       var edge:= polyEdges.ExtractAt(0);
 
-      var polygon: TPolygon;
       setLength(polygon,0);
       var first_point:= edge.starts;
-      Add_point_to_polygon(polygon,edge.starts);
-      Add_point_to_polygon(polygon,edge.ends);
+      Add_point_to_polygon(edge.starts);
+      Add_point_to_polygon(edge.ends);
       var last_endpoint:= edge.ends;
 
       repeat
@@ -184,14 +216,11 @@ begin
           new_endpoint:= edge.starts;
 
         last_endpoint:= new_endpoint;
-
-        setLength(polygon,length(polygon)+1);
-        polygon[length(polygon)-1]:= new_endpoint;
-
-        //Add_point_to_polygon(polygon,new_endpoint);
+        Add_point_to_polygon(new_endpoint);
 
       until first_point = new_endpoint;
 
+      Add_point_to_polygon(first_point);
       polygons.Add(polygon);
     end;
 end;
@@ -204,7 +233,7 @@ begin
   form1.Viewport3D1.Canvas.Fill:= purpleBrush;
 
   for var polygon in polygons do
-    form1.Viewport3D1.Canvas.DrawPolygon(polygon,1);
+    form1.Viewport3D1.Canvas.FillPolygon(polygon,0.5);
 end;
 
 procedure Delete_all_known_edges;
@@ -271,11 +300,12 @@ end;
 procedure TForm1.Timer1Timer(Sender: TObject);
 begin
   form1.Text1.text:=
-    'Statistics: ' +sLineBreak+
-    'Tiles: '+Tile_count.ToString +sLineBreak+
-    'Edges: '+Edges.count.ToString +sLineBreak+
-    'Vertices: '+Vertices.count.ToString +sLineBreak+
-    'Polygons: '+Polygons.count.ToString;
+    'Statistics: '+ sLineBreak+
+    'Tiles: '+      Tile_count.ToString +sLineBreak+
+    'Edges: '+      Edges.count.ToString +sLineBreak+
+    'Vertices: '+   Vertices.count.ToString +sLineBreak+
+    'Polygons: '+   Polygons.count.ToString +sLineBreak+
+    'Rays: '+       Rays.count.ToString;
 
   form1.Text1.Repaint;
 end;
@@ -336,6 +366,7 @@ begin
   Draw_Edges;
   Draw_Vertices;
   Draw_Polygons;
+  Draw_Rays;
   form1.Viewport3D1.Canvas.EndScene;
 end;
 
