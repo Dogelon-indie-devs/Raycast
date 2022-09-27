@@ -60,7 +60,7 @@ type
     procedure Try_to_create_edge(direction: TDirection);
     procedure Create_new_edge(location: TDirection);
     constructor Create(position: TPoint);
-    destructor  Destroy(position: TPoint);
+    procedure   Remove(position: TPoint);
   end;
 
 const
@@ -71,6 +71,7 @@ var
   Tile_size: integer;
   tiles: array of array of TTile;
   edges: TObjectList<TEdge>;
+  vertices: TList<TPoint>;
   painting_tiles: boolean;
 
 implementation
@@ -84,19 +85,49 @@ begin
   setLength(tiles, 20, 20);
   tile_size:= round(Form1.Viewport3D1.Width / Grid_size); // 40x40;
   edges:= TObjectList<TEdge>.Create(true);
+  vertices:= TList<TPoint>.Create;
 end;
 
-procedure Draw_edges;
+function Vertex_already_known(tested_vertex: TPoint): boolean;
 begin
+  result:= false;
+  for var vertex in vertices do
+    if vertex = tested_vertex then
+      exit(true);
+end;
+
+procedure Extract_all_vertices_from_edges;
+begin
+  vertices.Clear;
+
+  for var edge in edges do
+    begin
+      if not Vertex_already_known(edge.starts) then
+        vertices.Add(edge.starts);
+      if not Vertex_already_known(edge.ends) then
+        vertices.Add(edge.ends);
+    end;
+end;
+
+procedure Draw_Vertices;
+begin
+  Extract_all_vertices_from_edges;
+
   var redBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Red);
   redBrush.Thickness:=3;
 
-  for var edge in edges do
+  const circle_radius = 3;
+
+  for var vertex in vertices do
     with form1.Viewport3D1.Canvas do
       begin
-        BeginScene;
-        DrawLine(edge.starts,edge.ends,1,redBrush);
-        EndScene;
+        var rect:= TRectF.Create(
+          vertex.X-circle_radius,
+          vertex.Y-circle_radius,
+          vertex.X+circle_radius,
+          vertex.Y+circle_radius
+          );
+        form1.Viewport3D1.Canvas.DrawEllipse(rect,1,redBrush);
       end;
 end;
 
@@ -116,7 +147,7 @@ begin
     end;
 end;
 
-procedure Analyze_tiles_for_edges;
+procedure Draw_Edges;
 begin
   Delete_all_known_edges;
 
@@ -128,7 +159,11 @@ begin
       tile.Get_or_create_edges;
     end;
 
-  Draw_edges;
+  var whiteBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.White);
+  whiteBrush.Thickness:=1;
+
+  for var edge in edges do
+    form1.Viewport3D1.Canvas.DrawLine(edge.starts,edge.ends,1,whiteBrush);
 end;
 
 function Mouse_coords_to_tile_pos(mouseX, mouseY: Single): TPoint;
@@ -153,7 +188,7 @@ begin
   else
     begin
       if not tile_already_exists then exit;
-      tile.Destroy(mouse_over_tile);
+      tile.Remove(mouse_over_tile);
     end;
 end;
 
@@ -216,7 +251,8 @@ procedure Update_all_tiles;
 begin
   form1.Viewport3D1.Canvas.BeginScene;
   Draw_Tiles;
-  Analyze_tiles_for_edges;
+  Draw_Edges;
+  Draw_Vertices;
   form1.Viewport3D1.Canvas.EndScene;
 end;
 
@@ -229,7 +265,7 @@ begin
   Update_all_tiles;
 end;
 
-destructor TTile.Destroy(position: TPoint);
+procedure TTile.Remove(position: TPoint);
 begin
   tiles[position.X,position.Y].Free;
   tiles[position.X,position.Y]:= nil;
