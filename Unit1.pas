@@ -8,6 +8,7 @@ uses
   System.UITypes,
   System.Classes,
   System.Variants,
+  system.Math.Vectors,
   Generics.Collections,
 
   FMX.Types,
@@ -68,11 +69,13 @@ const
 
 var
   Form1: TForm1;
-  Tile_size: integer;
+  painting_tiles: boolean;
+  tile_size: integer;
+
   tiles: array of array of TTile;
   edges: TObjectList<TEdge>;
   vertices: TList<TPoint>;
-  painting_tiles: boolean;
+  polygons: TList<TPolygon>;
 
 implementation
 
@@ -86,6 +89,7 @@ begin
   tile_size:= round(Form1.Viewport3D1.Width / Grid_size); // 40x40;
   edges:= TObjectList<TEdge>.Create(true);
   vertices:= TList<TPoint>.Create;
+  polygons:= TList<TPolygon>.Create;
 end;
 
 function Vertex_already_known(tested_vertex: TPoint): boolean;
@@ -129,6 +133,65 @@ begin
           );
         form1.Viewport3D1.Canvas.DrawEllipse(rect,1,redBrush);
       end;
+end;
+
+procedure Add_point_to_polygon(polygon: TPolygon; point: TPoint);
+begin
+  setLength(polygon,length(polygon)+1);
+  polygon[length(polygon)]:= point;
+end;
+
+function Find_attached_edge(point: TPoint; polyEdges: TObjectList<TEdge>): TEdge;
+begin
+  result:= nil;
+  for var edge in polyEdges do
+    if edge.starts=point then
+      begin
+        result:= polyEdges.Extract(edge);
+        break;
+      end;
+end;
+
+procedure Create_polygons_from_edges;
+begin
+  polygons.Clear;
+
+  var polyEdges:= TObjectList<TEdge>.Create(true);
+  polyEdges.AddRange(edges);
+  polyEdges.Sort;
+
+  while polyEdges.Count>0 do
+    begin
+      var edge:= polyEdges.ExtractAt(0);
+
+      var polygon: TPolygon;
+      setLength(polygon,0);
+      var first_point:= edge.starts;
+      Add_point_to_polygon(polygon,edge.starts);
+      Add_point_to_polygon(polygon,edge.ends);
+
+      repeat
+        edge:= Find_attached_edge(edge.ends, polyEdges);
+        if edge=nil then
+          raise Exception.Create('Disconnected edge!');
+
+        Add_point_to_polygon(polygon,edge.ends);
+
+      until first_point = edge.ends;
+
+      polygons.Add(polygon);
+    end;
+end;
+
+procedure Draw_Polygons;
+begin
+  Create_polygons_from_edges;
+
+  var purpleBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Purple);
+  form1.Viewport3D1.Canvas.Fill:= purpleBrush;
+
+  for var polygon in polygons do
+    form1.Viewport3D1.Canvas.FillPolygon(polygon,1);
 end;
 
 procedure Delete_all_known_edges;
