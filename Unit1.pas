@@ -53,10 +53,10 @@ type
     origin: TPoint;
     touches_edges: array[dNorth..dEast] of TEdge;
     function Get_neighbor(direction: TDirection): TTile;
-    function Has_edge(direction: TDirection): TEdge;
+    function Get_edge(direction: TDirection): TEdge;
     procedure Get_or_create_edges;
-    procedure Ask_neighbor_for_edges(direction: TDirection; neighbor:TTile);
-    procedure Make_an_edge(location: TDirection);
+    procedure Try_to_create_edge(direction: TDirection);
+    procedure Create_new_edge(location: TDirection);
     constructor Create(position: TPoint);
   end;
 
@@ -209,12 +209,12 @@ begin
     end;
 end;
 
-function TTile.Has_edge(direction: TDirection): TEdge;
+function TTile.Get_edge(direction: TDirection): TEdge;
 begin
   result:= touches_edges[direction];
 end;
 
-procedure TTile.Make_an_edge(location: TDirection);
+procedure TTile.Create_new_edge(location: TDirection);
 begin
   var edge:= TEdge.Create;
   edge.index:= edges.Count+1;
@@ -246,67 +246,34 @@ begin
   edges.Add(edge);
 end;
 
+procedure TTile.Try_to_create_edge(direction: TDirection);
+begin
+  var neighbor:= Get_neighbor(direction);                                       // north
+  var needs_edge_on_that_side:= neighbor = nil;
+  if not needs_edge_on_that_side then exit;
+
+  var secondary_direction: TDirection;
+  case direction of
+    dNorth,dSouth:secondary_direction:= TDirection.dWest;
+    dWest,dEast:  secondary_direction:= TDirection.dNorth;
+  end;
+
+  var neighbor2:= Get_neighbor(secondary_direction);                            // west
+  var second_neighbor_exists:= neighbor2 <> nil;
+  if second_neighbor_exists then
+    begin
+      var edge:= neighbor2.Get_edge(direction);
+      edge.Extend(secondary_direction.Opposite);
+      self.touches_edges[direction]:= edge;
+    end
+  else
+    Create_new_edge(direction);
+end;
+
 procedure TTile.Get_or_create_edges;
 begin
   for var direction := TDirection.dNorth to TDirection.dEast do
-    begin
-      var neighbor:= Get_neighbor(direction);
-      if neighbor<>nil then
-        begin
-          if (direction=dNorth) or (direction=dWest) then
-            Ask_neighbor_for_edges(direction,neighbor);
-        end
-      else
-        Make_an_edge(direction);
-    end;
-end;
-
-procedure TTile.Ask_neighbor_for_edges(direction: TDirection; neighbor: TTile);
-var edge: TEdge;
-begin
-  case direction of
-    dNorth:
-      begin
-        edge:= neighbor.Has_edge(TDirection.dWest);
-        if edge<>nil then
-          begin
-            self.touches_edges[TDirection.dWest]:= edge;
-            edge.Extend(TDirection.dSouth);
-          end
-        else
-          self.Make_an_edge(TDirection.dWest);
-
-        edge:= neighbor.Has_edge(TDirection.dEast);
-        if edge<>nil then
-          begin
-            self.touches_edges[TDirection.dEast]:= edge;
-            edge.Extend(TDirection.dSouth);
-          end
-        else
-          self.Make_an_edge(TDirection.dEast);
-      end;
-
-    dWest:
-      begin
-        edge:= neighbor.Has_edge(TDirection.dNorth);
-        if edge<>nil then
-          begin
-            self.touches_edges[TDirection.dNorth]:= edge;
-            edge.Extend(TDirection.dEast);
-          end
-        else
-          self.Make_an_edge(TDirection.dNorth);
-
-        edge:= neighbor.Has_edge(TDirection.dSouth);
-        if edge<>nil then
-          begin
-            self.touches_edges[TDirection.dSouth]:= edge;
-            edge.Extend(TDirection.dEast);
-          end
-        else
-          self.Make_an_edge(TDirection.dSouth);
-      end;
-  end;
+    self.Try_to_create_edge(direction);
 end;
 
 { TEdge }
