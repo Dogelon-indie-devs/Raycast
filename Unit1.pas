@@ -8,8 +8,9 @@ uses
   System.UITypes,
   System.Classes,
   System.Variants,
-  system.Math.Vectors,
+  System.Math.Vectors,
   Generics.Collections,
+  Generics.Defaults,
 
   FMX.Types,
   FMX.Controls,
@@ -139,28 +140,29 @@ end;
 
 procedure Add_point_to_polygon(polygon: TPolygon; point: TPoint);
 begin
-  setLength(polygon,length(polygon)+1);
-  polygon[length(polygon)-1]:= point;
 end;
 
-function Find_attached_edge(point: TPoint; polyEdges: TObjectList<TEdge>): TEdge;
+function Find_attached_edge(last_endpoint: TPoint; polyEdges: TObjectList<TEdge>): TEdge;
 begin
-  result:= nil;
   for var edge in polyEdges do
-    if edge.starts=point then
-      begin
-        result:= polyEdges.Extract(edge);
-        break;
-      end;
+    begin
+      if edge.starts=last_endpoint then
+        exit( polyEdges.Extract(edge) );
+
+      if edge.ends=last_endpoint then
+        exit( polyEdges.Extract(edge) );
+    end;
+
+  raise Exception.Create('Disconnected edge!');
 end;
 
 procedure Create_polygons_from_edges;
+var new_endpoint: TPoint;
 begin
   polygons.Clear;
 
   var polyEdges:= TObjectList<TEdge>.Create(true);
   polyEdges.AddRange(edges);
-  polyEdges.Sort;
 
   while polyEdges.Count>0 do
     begin
@@ -171,16 +173,24 @@ begin
       var first_point:= edge.starts;
       Add_point_to_polygon(polygon,edge.starts);
       Add_point_to_polygon(polygon,edge.ends);
+      var last_endpoint:= edge.ends;
 
       repeat
-        edge:= Find_attached_edge(edge.ends, polyEdges);
-        if edge=nil then
-          break;
-          //raise Exception.Create('Disconnected edge!');
+        edge:= Find_attached_edge(last_endpoint, polyEdges);
 
-        Add_point_to_polygon(polygon,edge.ends);
+        if edge.starts=last_endpoint then
+          new_endpoint:= edge.ends
+        else
+          new_endpoint:= edge.starts;
 
-      until first_point = edge.ends;
+        last_endpoint:= new_endpoint;
+
+        setLength(polygon,length(polygon)+1);
+        polygon[length(polygon)-1]:= new_endpoint;
+
+        //Add_point_to_polygon(polygon,new_endpoint);
+
+      until first_point = new_endpoint;
 
       polygons.Add(polygon);
     end;
@@ -194,7 +204,7 @@ begin
   form1.Viewport3D1.Canvas.Fill:= purpleBrush;
 
   for var polygon in polygons do
-    form1.Viewport3D1.Canvas.FillPolygon(polygon,1);
+    form1.Viewport3D1.Canvas.DrawPolygon(polygon,1);
 end;
 
 procedure Delete_all_known_edges;
