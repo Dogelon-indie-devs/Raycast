@@ -49,9 +49,8 @@ type
     function Opposite: TDirection;
   end;
 
-  TEdge = class
+  TEdge = class(TBasicLine)
     index: integer;
-    starts, ends: TPoint;
     procedure Extend(direction: TDirection);
   end;
 
@@ -78,11 +77,11 @@ var
   tile_size: integer;
   tile_count: integer;
 
-  tiles: array of array of TTile;
-  edges: TObjectList<TEdge>;
+  tiles:    array of array of TTile;
+  edges:    TObjectList<TEdge>;
   vertices: TList<TPoint>;
   polygons: TList<TPolygon>;
-  rays: TList<TVector>;
+  rays:     TList<TVector>;
 
 implementation
 
@@ -92,8 +91,6 @@ implementation
 
 procedure TForm1.FormCreate(Sender: TObject);
 begin
-  Find_intersection_point;
-
   tile_count:= 0;
   setLength(tiles, 20, 20);
   tile_size:= round(Form1.Viewport3D1.Width / Grid_size); // 40x40;
@@ -103,11 +100,54 @@ begin
   rays:= TList<TVector>.Create;
 end;
 
+procedure Draw_intersection(intersect: TPointF);
+begin
+  const circle_radius = 3;
+
+  var greenBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Lime);
+  greenBrush.Thickness:=1;
+
+  var rect:= TRectF.Create(
+    intersect.X-circle_radius,
+    intersect.Y-circle_radius,
+    intersect.X+circle_radius,
+    intersect.Y+circle_radius
+    );
+  form1.Viewport3D1.Canvas.DrawEllipse(rect,1,greenBrush);
+end;
+
+procedure Check_ray_against_edges(ray: TVector);
+begin
+  for var edge in edges do
+    begin
+      var line1:= TBasicLine(edge);
+      var line2:= TBasicLine.Create;
+      try
+        line2.starts:= TPointF.Zero;
+        line2.ends:= TPointF(ray);
+
+        var intersect: TPointF;
+        try
+          intersect:= Find_intersection_point(line1,line2);
+        except
+          continue;
+        end;
+
+        Draw_intersection(intersect);
+
+      finally
+        if line2 <> nil then
+          line2.Free;
+      end;
+    end;
+end;
+
 procedure Defines_all_rays;
 begin
   for var vertex in vertices do
     begin
       var ray:= TVector.Create(vertex);
+      Check_ray_against_edges(ray);
       rays.Add(ray);
     end;
 end;
@@ -143,10 +183,10 @@ begin
 
   for var edge in edges do
     begin
-      if not Vertex_already_known(edge.starts) then
-        vertices.Add(edge.starts);
-      if not Vertex_already_known(edge.ends) then
-        vertices.Add(edge.ends);
+      if not Vertex_already_known(edge.starts.Round) then
+        vertices.Add(edge.starts.Round);
+      if not Vertex_already_known(edge.ends.Round) then
+        vertices.Add(edge.ends.Round);
     end;
 end;
 
@@ -160,16 +200,15 @@ begin
   const circle_radius = 3;
 
   for var vertex in vertices do
-    with form1.Viewport3D1.Canvas do
-      begin
-        var rect:= TRectF.Create(
-          vertex.X-circle_radius,
-          vertex.Y-circle_radius,
-          vertex.X+circle_radius,
-          vertex.Y+circle_radius
-          );
-        form1.Viewport3D1.Canvas.DrawEllipse(rect,1,redBrush);
-      end;
+    begin
+      var rect:= TRectF.Create(
+        vertex.X-circle_radius,
+        vertex.Y-circle_radius,
+        vertex.X+circle_radius,
+        vertex.Y+circle_radius
+        );
+      form1.Viewport3D1.Canvas.DrawEllipse(rect,1,redBrush);
+    end;
 end;
 
 function Find_attached_edge(last_endpoint: TPoint; polyEdges: TObjectList<TEdge>): TEdge;
@@ -208,24 +247,24 @@ begin
 
       setLength(polygon,0);
       var first_point:= edge.starts;
-      Add_point_to_polygon(edge.starts);
-      Add_point_to_polygon(edge.ends);
+      Add_point_to_polygon(edge.starts.Round);
+      Add_point_to_polygon(edge.ends.Round);
       var last_endpoint:= edge.ends;
 
       repeat
-        edge:= Find_attached_edge(last_endpoint, polyEdges);
+        edge:= Find_attached_edge(last_endpoint.Round, polyEdges);
 
         if edge.starts=last_endpoint then
-          new_endpoint:= edge.ends
+          new_endpoint:= edge.ends.Round
         else
-          new_endpoint:= edge.starts;
+          new_endpoint:= edge.starts.Round;
 
         last_endpoint:= new_endpoint;
         Add_point_to_polygon(new_endpoint);
 
       until first_point = new_endpoint;
 
-      Add_point_to_polygon(first_point);
+      Add_point_to_polygon(first_point.Round);
       polygons.Add(polygon);
     end;
 end;

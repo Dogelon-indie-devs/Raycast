@@ -7,18 +7,19 @@ uses
   System.Types,
   System.SysUtils;
 
-function Find_intersection_point: TPointF;
+type ELinesParallel = class(Exception);
+type ELineSegmentDontIntersect = class(Exception);
+
+type TBasicLine = class
+  starts, ends: TPointF;
+end;
+
+function Find_intersection_point(line1,line2: TBasicLine): TPointF;
 
 implementation
 
-
-type TBasicLine = record
-  p1,p2:TPointF;
-end;
-
-const FLT_MAX = 99999;
-
-function Line_Line_Intersection(A,B,C,D: TPointF) :TPointF;
+function Line_Line_Intersection(A,B,C,D: TPointF): TPointF;
+// https://www.geeksforgeeks.org/program-for-point-of-intersection-of-two-lines
 begin
   // Line AB represented as a1x + b1y = c1
   var a1 := B.Y - A.Y;
@@ -39,21 +40,29 @@ begin
       result:= TPointF.Create(x, y);
     end
   else
-    raise Exception.Create('The given lines are parallel');
+    raise ELinesParallel.Create('The given lines are parallel');
 end;
 
-function Find_intersection_point: TPointF;    // (line1,line2: TLine)
+function Find_intersection_point(line1,line2: TBasicLine): TPointF;
 begin
-  var A := TPoint.Create(1, 1);
-  var B := TPoint.Create(4, 4);
-  var C := TPoint.Create(1, 8);
-  var D := TPoint.Create(2, 4);
+  var intersection :=
+    Line_Line_Intersection(line1.starts,line1.ends,line2.starts,line2.ends);
 
-  var intersection := Line_Line_Intersection(A, B, C, D);
+  if  (intersection.X < line1.starts.X) OR
+      (intersection.X > line1.ends.X) OR
+      (intersection.X < line2.starts.X) OR
+      (intersection.X > line2.ends.X) OR
+
+      (intersection.Y < line1.starts.Y) OR
+      (intersection.Y > line1.ends.Y) OR
+      (intersection.Y < line2.starts.Y) OR
+      (intersection.Y > line2.ends.Y) then
+  raise ELineSegmentDontIntersect.Create('Intersect outside of the lines');
+
+  result:= intersection;
 
   // NOTE: Further check can be applied in case of line segments. Here, we have considered AB and CD as lines
-  raise Exception.Create('The intersection of the given lines AB and CD is: '+
-    intersection.X.ToString+','+intersection.Y.ToString);
+  //Log('The intersection of the given lines AB and CD is: '+intersection.X.ToString+','+intersection.Y.ToString);
 end;
 
 
