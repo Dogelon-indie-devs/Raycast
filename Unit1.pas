@@ -141,6 +141,13 @@ begin
   polygons:=    TList<TPolygon>.Create;
   rays:=        TList<TVector>.Create;
   intersects:=  TList<TPointF>.Create;
+
+  TTile.Create(TPoint.Create(5,1));
+  TTile.Create(TPoint.Create(5,2));
+  TTile.Create(TPoint.Create(5,3));
+  TTile.Create(TPoint.Create(5,4));
+  TTile.Create(TPoint.Create(5,5));
+  Viewport3D1.Repaint;
 end;
 
 procedure Draw_intersection(intersect: TPointF);
@@ -176,7 +183,13 @@ begin
           continue;
         end;
 
+        if intersect = edge.starts  then continue;
+        if intersect = edge.ends    then continue;
+
         intersects.add(intersect);
+        var new_ray:= TVector.Create(intersect);
+        rays.Add(new_ray);
+
         Draw_intersection(intersect);
 
       finally
@@ -196,6 +209,46 @@ begin
     end;
 
   created_rays:= rays.Count;
+
+  var all_vector_angles:= TList<Single>.Create;
+  try
+    for var ray in rays do
+      begin
+        var ray_as_point:= TPointF(ray);
+        var angle:= ArcTan2(ray_as_point.Y,ray_as_point.X);
+        //var deg:= RadToDeg(angle);
+
+        if not all_vector_angles.Contains(angle) then
+          all_vector_angles.Add(angle);
+      end;
+
+    const tolerance = 0.0001;
+
+    for var angle in all_vector_angles do
+      begin
+        var previous_shortest_ray:= TVector.Create(999999,999999);
+
+        for var ray in rays do
+          begin
+            var ray_as_point:= TPointF(ray);
+            var ray_angle:= ArcTan2(ray_as_point.Y,ray_as_point.X);
+
+            if abs(ray_angle - angle) > tolerance then continue;
+
+            if ray.Length < previous_shortest_ray.Length then
+              begin
+                if rays.Contains(previous_shortest_ray) then
+                   rays.Remove(previous_shortest_ray);
+                previous_shortest_ray:= ray;
+              end
+            else
+              rays.Remove(ray);
+          end;
+      end;
+
+  finally
+    all_vector_angles.Free;
+  end;
 end;
 
 procedure Draw_Rays;
