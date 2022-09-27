@@ -30,6 +30,8 @@ type
     procedure Viewport3D1MouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Single);
     procedure Timer1Timer(Sender: TObject);
+    procedure Viewport3D1MouseDown(Sender: TObject; Button: TMouseButton;
+      Shift: TShiftState; X, Y: Single);
   private
     { Private declarations }
   public
@@ -69,6 +71,7 @@ var
   Tile_size: integer;
   tiles: array of array of TTile;
   edges: TObjectList<TEdge>;
+  painting_tiles: boolean;
 
 implementation
 
@@ -141,16 +144,35 @@ begin
 
   var tile:= tiles[mouse_over_tile.X,mouse_over_tile.Y];
   var tile_already_exists:= tile<>nil;
-  if tile_already_exists then
-    tile.Destroy(mouse_over_tile)
+
+  if painting_tiles then
+    begin
+      if tile_already_exists then exit;
+      TTile.Create(mouse_over_tile);
+    end
   else
-    TTile.Create(mouse_over_tile);
+    begin
+      if not tile_already_exists then exit;
+      tile.Destroy(mouse_over_tile);
+    end;
 end;
 
 procedure TForm1.Timer1Timer(Sender: TObject);
 begin
   form1.Text1.text:= 'Edge count: '+edges.Count.ToString;
   form1.Text1.Repaint;
+end;
+
+procedure TForm1.Viewport3D1MouseDown(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Single);
+begin
+  if not (Button=TMouseButton.mbLeft) then exit;
+
+  var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
+  var tile:= tiles[mouse_over_tile.X,mouse_over_tile.Y];
+  var tile_already_exists:= tile<>nil;
+
+  painting_tiles:= not tile_already_exists;
 end;
 
 procedure TForm1.Viewport3D1MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
