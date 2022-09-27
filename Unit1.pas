@@ -76,12 +76,16 @@ var
   painting_tiles: boolean;
   tile_size: integer;
   tile_count: integer;
+  created_rays: integer;
 
-  tiles:    array of array of TTile;
-  edges:    TObjectList<TEdge>;
-  vertices: TList<TPoint>;
-  polygons: TList<TPolygon>;
-  rays:     TList<TVector>;
+  tiles:      array of array of TTile;
+  edges:      TObjectList<TEdge>;
+  vertices:   TList<TPoint>;
+  polygons:   TList<TPolygon>;
+  rays:       TList<TVector>;
+  intersects: TList<TPointF>;
+
+  visibility_polygon: TPolygon;
 
 implementation
 
@@ -89,15 +93,53 @@ implementation
 
 // loosely following tutorial from https://www.youtube.com/watch?v=fc3nnG2CG8U
 
+procedure Place_edges_on_screen_borders;
+begin
+  var index:= 0;
+  for var direction := TDirection.dNorth to TDirection.dEast do
+    begin
+      var edge:= TEdge.Create;
+      edge.index:= index;
+      case direction of
+        dNorth:
+          begin
+            edge.starts:= TPointF.Zero;
+            edge.ends  := TPointF.Create(Form1.Width,0);
+          end;
+        dWest:
+          begin
+            edge.starts:= TPointF.Zero;
+            edge.ends  := TPointF.Create(0,Form1.Height);
+          end;
+        dSouth:
+          begin
+            edge.starts:= TPointF.Create(0,Form1.Height);
+            edge.ends  := TPointF.Create(Form1.Width,Form1.Height);
+          end;
+        dEast:
+          begin
+            edge.starts:= TPointF.Create(Form1.Width,0);
+            edge.ends  := TPointF.Create(Form1.Width,Form1.Height);
+          end;
+        else raise Exception.Create('Error Message');
+      end;
+
+      edges.Add(edge);
+      inc(index);
+    end;
+end;
+
 procedure TForm1.FormCreate(Sender: TObject);
 begin
   tile_count:= 0;
   setLength(tiles, 20, 20);
   tile_size:= round(Form1.Viewport3D1.Width / Grid_size); // 40x40;
-  edges:= TObjectList<TEdge>.Create(true);
-  vertices:= TList<TPoint>.Create;
-  polygons:= TList<TPolygon>.Create;
-  rays:= TList<TVector>.Create;
+
+  edges:=       TObjectList<TEdge>.Create(true);
+  vertices:=    TList<TPoint>.Create;
+  polygons:=    TList<TPolygon>.Create;
+  rays:=        TList<TVector>.Create;
+  intersects:=  TList<TPointF>.Create;
 end;
 
 procedure Draw_intersection(intersect: TPointF);
@@ -133,6 +175,7 @@ begin
           continue;
         end;
 
+        intersects.add(intersect);
         Draw_intersection(intersect);
 
       finally
@@ -142,7 +185,7 @@ begin
     end;
 end;
 
-procedure Defines_all_rays;
+procedure Define_all_rays;
 begin
   for var vertex in vertices do
     begin
@@ -150,12 +193,15 @@ begin
       Check_ray_against_edges(ray);
       rays.Add(ray);
     end;
+
+  created_rays:= rays.Count;
 end;
 
 procedure Draw_Rays;
 begin
   Rays.Clear;
-  Defines_all_rays;
+  setLength(visibility_polygon,0);
+  Define_all_rays;
 
   var yellowBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
   yellowBrush.Thickness:=1;
@@ -299,6 +345,7 @@ end;
 procedure Draw_Edges;
 begin
   Delete_all_known_edges;
+  //Place_edges_on_screen_borders;
 
   for var x := 0 to Grid_size-1 do
   for var y := 0 to Grid_size-1 do
@@ -349,7 +396,8 @@ begin
     'Edges: '+      Edges.count.ToString +sLineBreak+
     'Vertices: '+   Vertices.count.ToString +sLineBreak+
     'Polygons: '+   Polygons.count.ToString +sLineBreak+
-    'Rays: '+       Rays.count.ToString;
+    'Created Rays: '+created_rays.ToString +sLineBreak+
+    'Useful Rays: '+Rays.count.ToString;
 
   form1.Text1.Repaint;
 end;
