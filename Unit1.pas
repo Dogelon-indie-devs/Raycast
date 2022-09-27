@@ -23,13 +23,13 @@ uses
 type
   TForm1 = class(TForm)
     Viewport3D1: TViewport3D;
-    Button1: TButton;
-    Panel1: TPanel;
     Text1: TText;
+    Timer1: TTimer;
     procedure Viewport3D1MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
     procedure FormCreate(Sender: TObject);
     procedure Viewport3D1MouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Single);
+    procedure Timer1Timer(Sender: TObject);
   private
     { Private declarations }
   public
@@ -58,6 +58,7 @@ type
     procedure Try_to_create_edge(direction: TDirection);
     procedure Create_new_edge(location: TDirection);
     constructor Create(position: TPoint);
+    destructor  Destroy(position: TPoint);
   end;
 
 const
@@ -79,7 +80,7 @@ procedure TForm1.FormCreate(Sender: TObject);
 begin
   setLength(tiles, 20, 20);
   tile_size:= round(Form1.Viewport3D1.Width / Grid_size); // 40x40;
-  edges:= TObjectList<TEdge>.Create;
+  edges:= TObjectList<TEdge>.Create(true);
 end;
 
 procedure Draw_edges;
@@ -96,9 +97,25 @@ begin
       end;
 end;
 
+procedure Delete_all_known_edges;
+begin
+  if edges.Count>0 then
+    edges.DeleteRange(0,edges.Count);
+
+  for var x := 0 to Grid_size-1 do
+  for var y := 0 to Grid_size-1 do
+    begin
+      var tile:= tiles[X,Y];
+      if tile=nil then continue;
+
+      for var direction := TDirection.dNorth to TDirection.dEast do
+        tile.touches_edges[direction]:= nil;
+    end;
+end;
+
 procedure Analyze_tiles_for_edges;
 begin
-  edges.Clear;
+  Delete_all_known_edges;
 
   for var x := 0 to Grid_size-1 do
   for var y := 0 to Grid_size-1 do
@@ -109,7 +126,6 @@ begin
     end;
 
   Draw_edges;
-  form1.Text1.text:= 'Edge count: '+edges.Count.ToString;
 end;
 
 function Mouse_coords_to_tile_pos(mouseX, mouseY: Single): TPoint;
@@ -118,16 +134,23 @@ begin
   result.Y := round(mouseY) div Tile_size;
 end;
 
-procedure Create_tile_under_cursor(mouse_over_tile: TPoint);
+procedure Work_with_tile_under_cursor(mouse_over_tile: TPoint);
 begin
   if mouse_over_tile.X>Grid_size-1 then exit;
   if mouse_over_tile.Y>Grid_size-1 then exit;
 
-  var tile_already_exists:= tiles[mouse_over_tile.X,mouse_over_tile.Y]<>nil;
+  var tile:= tiles[mouse_over_tile.X,mouse_over_tile.Y];
+  var tile_already_exists:= tile<>nil;
   if tile_already_exists then
-    exit
+    tile.Destroy(mouse_over_tile)
   else
     TTile.Create(mouse_over_tile);
+end;
+
+procedure TForm1.Timer1Timer(Sender: TObject);
+begin
+  form1.Text1.text:= 'Edge count: '+edges.Count.ToString;
+  form1.Text1.Repaint;
 end;
 
 procedure TForm1.Viewport3D1MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
@@ -136,7 +159,7 @@ begin
   //Text1.Text:= 'Tile X:'+mouse_over_tile.X.ToString+', Y:'+mouse_over_tile.Y.ToString;
 
   if not (ssLeft in Shift) then exit;
-  Create_tile_under_cursor(mouse_over_tile);
+  Work_with_tile_under_cursor(mouse_over_tile);
 end;
 
 procedure TForm1.Viewport3D1MouseUp(Sender: TObject; Button: TMouseButton;
@@ -145,7 +168,7 @@ begin
   if not (Button=TMouseButton.mbLeft) then exit;
 
   var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
-  Create_tile_under_cursor(mouse_over_tile);
+  Work_with_tile_under_cursor(mouse_over_tile);
 end;
 
 { TTile }
@@ -167,17 +190,28 @@ begin
     end;
 end;
 
+procedure Update_all_tiles;
+begin
+  form1.Viewport3D1.Canvas.BeginScene;
+  Draw_Tiles;
+  Analyze_tiles_for_edges;
+  form1.Viewport3D1.Canvas.EndScene;
+end;
+
 constructor TTile.Create(position: TPoint);
 begin
   self.X:= position.X;
   self.Y:= position.Y;
   self.origin:= TPoint.Create(X*tile_size,Y*tile_size);
   tiles[position.X,position.Y]:= self;
+  Update_all_tiles;
+end;
 
-  form1.Viewport3D1.Canvas.BeginScene;
-  Draw_Tiles;
-  Analyze_tiles_for_edges;
-  form1.Viewport3D1.Canvas.EndScene;
+destructor TTile.Destroy(position: TPoint);
+begin
+  tiles[position.X,position.Y].Free;
+  tiles[position.X,position.Y]:= nil;
+  Update_all_tiles;
 end;
 
 function TTile.Get_neighbor(direction: TDirection): TTile;
@@ -246,8 +280,16 @@ begin
   edges.Add(edge);
 end;
 
+procedure Breakpoint_placeholder;
+begin
+
+end;
+
 procedure TTile.Try_to_create_edge(direction: TDirection);
 begin
+  if (self.X=1) AND (self.Y=1) then
+    Breakpoint_placeholder;
+
   var neighbor:= Get_neighbor(direction);                                       // north
   var needs_edge_on_that_side:= neighbor = nil;
   if not needs_edge_on_that_side then exit;
@@ -263,8 +305,13 @@ begin
   if second_neighbor_exists then
     begin
       var edge:= neighbor2.Get_edge(direction);
-      edge.Extend(secondary_direction.Opposite);
-      self.touches_edges[direction]:= edge;
+      if edge<>nil then
+        begin
+          edge.Extend(secondary_direction.Opposite);
+          self.touches_edges[direction]:= edge;
+        end
+      else
+        Create_new_edge(direction);
     end
   else
     Create_new_edge(direction);
