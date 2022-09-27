@@ -20,7 +20,10 @@ uses
   FMX.Viewport3D,
   FMX.StdCtrls,
   FMX.Controls.Presentation,
-  FMX.Objects;
+  FMX.Objects,
+  FMX.Utils,
+
+  Math;
 
 type
   TForm1 = class(TForm)
@@ -89,6 +92,8 @@ implementation
 
 procedure TForm1.FormCreate(Sender: TObject);
 begin
+  Find_intersection_point;
+
   tile_count:= 0;
   setLength(tiles, 20, 20);
   tile_size:= round(Form1.Viewport3D1.Width / Grid_size); // 40x40;
