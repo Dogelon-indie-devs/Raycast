@@ -71,6 +71,7 @@ type
 const
   Grid_size = 20;
   Form_size = 800;
+  use_mouse_as_light = false;
 
 var
   Form1: TForm1;
@@ -111,8 +112,12 @@ begin
   const max_value = Grid_size-1;
   for var i := 0 to Grid_size-1 do
     begin
-      //TTile.Create(TPoint.Create(0,i));
-      //TTile.Create(TPoint.Create(i,0));
+      if use_mouse_as_light then
+        begin
+          TTile.Create(TPoint.Create(0,i));
+          TTile.Create(TPoint.Create(i,0));
+        end;
+
       TTile.Create(TPoint.Create(max_value,i));
       TTile.Create(TPoint.Create(i,max_value));
     end;
@@ -250,11 +255,15 @@ begin
 end;
 
 procedure Draw_Rays;
+var light_point: TPointF;
 begin
   var yellowBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
   yellowBrush.Thickness:=1;
 
-  var light_point:= TPointF(light_position);
+  if use_mouse_as_light then
+    light_point:= TPointF(light_position)
+  else
+    light_point:= TPointF.Zero;
 
   for var ray in rays do
     form1.Viewport3D1.Canvas.DrawLine(light_point,TPointF(ray),1,yellowBrush);
@@ -315,43 +324,9 @@ procedure Add_new_ray(ray:TVector);
 begin
   if ray = TVector.Zero then exit;
   if (ray.X<0) OR (ray.Y<0) then exit;
-  //if (ray.X>2000) OR (ray.Y>2000) then exit;
+  if (ray.X>2000) OR (ray.Y>2000) then exit;
   if rays.Contains(ray) then exit;
   Rays.Add(ray);
-end;
-
-function Check_against_edges_return_shortest(ray: TVector): TVector;
-begin
-  var shortest_ray:= TVector.Create(Infinity,Infinity);
-
-  for var edge in edges do
-    begin
-      var line1:= TBasicLine(edge);
-      var line2:= TBasicLine.Create;
-      try
-        line2.starts:=TPointF(light_position);
-        line2.ends:=  TPointF(ray);
-
-        var intersect: TPointF;
-        try
-          intersect:= Find_intersection_point(line1,line2);
-        except
-          continue;
-        end;
-
-        intersects.add(intersect);
-
-        var new_ray:= TVector.Create(intersect);
-        if  new_ray.Length < shortest_ray.Length then
-          shortest_ray:= new_ray;
-
-      finally
-        if line2 <> nil then
-          line2.Free;
-      end;
-    end;
-
-  result:= shortest_ray;
 end;
 
 procedure Cast_rays;
@@ -364,6 +339,44 @@ const angle_move = 0.0001;
     var rdy:= new_vector_length * sin(angle);
     var raw_vector:= TVector.Create(rdx,rdy);
     result:= raw_vector;
+  end;
+
+  function Check_against_edges_return_shortest(ray: TVector): TVector;
+  begin
+    var shortest_ray:= TVector.Create(Infinity,Infinity);
+
+    for var edge in edges do
+      begin
+        var line1:= TBasicLine(edge);
+        var line2:= TBasicLine.Create;
+        try
+          if use_mouse_as_light then
+            line2.starts:= TPointF(light_position)
+          else
+            line2.starts:= TPointF.Zero;
+
+          line2.ends:=  TPointF(ray);
+
+          var intersect: TPointF;
+          try
+            intersect:= Find_intersection_point(line1,line2);
+          except
+            continue;
+          end;
+
+          intersects.add(intersect);
+
+          var new_ray:= TVector.Create(intersect);
+          if  new_ray.Length < shortest_ray.Length then
+            shortest_ray:= new_ray;
+
+        finally
+          if line2 <> nil then
+            line2.Free;
+        end;
+      end;
+
+    result:= shortest_ray;
   end;
 
 begin
@@ -409,6 +422,7 @@ procedure Calculate_Rays;
 begin
   Rays.Clear;
   intersects.Clear;
+
   Cast_rays;
   Sort_rays_by_angle;
 end;
@@ -439,7 +453,11 @@ procedure Calculate_Visibility_Polygon;
 begin
   setLength(visibility_polygon,0);
   setLength(visibility_polygon,rays.Count+1);
-  visibility_polygon[0]:= TPointF(light_position).Round;
+
+  if use_mouse_as_light then
+    visibility_polygon[0]:= TPointF(light_position).Round
+  else
+    visibility_polygon[0]:= TPointF.Zero.Round;
 
   for var i:= 0 to rays.Count-1 do
     begin
@@ -567,8 +585,13 @@ end;
 
 procedure Move_light(X,Y: single);
 begin
-  var light:= TPoint.Create(round(X),round(Y));
-  light_position:= TVector.Create(light);
+  if use_mouse_as_light then
+    begin
+      var light:= TPoint.Create(round(X),round(Y));
+      light_position:= TVector.Create(light);
+    end
+  else
+    light_position:= TVector.Zero;
 
   Update_dynamic_objects;
 end;
@@ -815,7 +838,7 @@ procedure Update_fixed_objects;
 begin
   Calculate_edges;
   Calculate_vertices;
-  Calculate_polygons;
+  //Calculate_polygons;
 
   Draw_fixed_objects;
 end;
