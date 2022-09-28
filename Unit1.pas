@@ -155,6 +155,59 @@ begin
   TTile.Create(TPoint.Create(7,3));
 end;
 
+function Get_vector_angle(ray: TVector): single;
+begin
+  var ray_as_point:= TPointF(ray);
+  result:= ArcTan2(ray_as_point.Y,ray_as_point.X);
+end;
+
+procedure Save_ray_angles_into_txt_file(filename:string);
+begin
+  var ray_angles:= TStringList.Create;
+  try
+    for var ray in rays do
+      begin
+        var ray_angle:= Get_vector_angle(ray);
+        ray_angles.Add(ray_angle.ToString);
+      end;
+    ray_angles.SaveToFile(filename);
+  finally
+    ray_angles.Free;
+  end;
+end;
+
+procedure Draw_Visibility_Polygon;
+var Comparison: TComparison<TVector>;
+
+begin
+  setLength(visibility_polygon,0);
+
+  Comparison := function(const Left, Right: TVector): Integer
+  begin
+    var raw:= Get_vector_angle(left) - Get_vector_angle(right);
+    if raw>0 then
+      result:= ceil(raw)
+    else
+      result:= floor(raw);
+  end;
+
+  rays.Sort(TComparer<TVector>.Construct(Comparison));
+
+  setLength(visibility_polygon,rays.Count+1);
+  visibility_polygon[0]:= TVector.Zero;
+
+  for var i:= 0 to rays.Count-1 do
+    begin
+      var ray:= rays[i];
+      var point:= TPointF(ray).Round;
+      visibility_polygon[i]:= point;
+    end;
+
+  var lightBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
+  form1.Viewport3D1.Canvas.Fill:= lightBrush;
+  form1.Viewport3D1.Canvas.FillPolygon(visibility_polygon,0.5);
+end;
+
 procedure Draw_intersection(intersect: TPointF);
 begin
   const circle_radius = 3;
@@ -169,6 +222,12 @@ begin
     intersect.Y+circle_radius
     );
   form1.Viewport3D1.Canvas.DrawEllipse(rect,1,greenBrush);
+end;
+
+procedure Draw_Intersects;
+begin
+  for var intersect in intersects do
+    Draw_intersection(intersect);
 end;
 
 procedure Check_ray_against_edges(ray: TVector);
@@ -228,8 +287,7 @@ begin
   for var i:= rays.Count-1 downto 0 do
     begin
       var ray:= rays[i];
-      var ray_as_point:= TPointF(ray);
-      var ray_angle:= ArcTan2(ray_as_point.Y,ray_as_point.X);
+      var ray_angle:= Get_vector_angle(ray);
 
       const tested_angle = 0.463647603988647;
       var looking_for_this_angle:=
@@ -268,51 +326,13 @@ begin
   try
     for var ray in rays do
       begin
-        var ray_as_point:= TPointF(ray);
-        var angle:= ArcTan2(ray_as_point.Y,ray_as_point.X);
-        //var deg:= RadToDeg(angle);
-
+        var angle:= Get_vector_angle(ray);
         if not all_vector_angles.Contains(angle) then
           all_vector_angles.Add(angle);
       end;
 
-    var angle_list:= TStringList.Create;
-    try
-      for var angle in all_vector_angles do
-        angle_list.Add(angle.ToString);
-      angle_list.SaveToFile('angles.txt');
-    finally
-      angle_list.Free;
-    end;
-
-    var ray_angles:= TStringList.Create;
-    try
-      for var ray in rays do
-        begin
-          var ray_as_point:= TPointF(ray);
-          var ray_angle:= ArcTan2(ray_as_point.Y,ray_as_point.X);
-          ray_angles.Add(ray_angle.ToString);
-        end;
-      ray_angles.SaveToFile('ray_angles.txt');
-    finally
-      ray_angles.Free;
-    end;
-
     for var angle in all_vector_angles do
       Seek_shortest_vector_for_each_angle(angle);
-
-    var ray_angles2:= TStringList.Create;
-    try
-      for var ray in rays do
-        begin
-          var ray_as_point:= TPointF(ray);
-          var ray_angle:= ArcTan2(ray_as_point.Y,ray_as_point.X);
-          ray_angles2.Add(ray_angle.ToString);
-        end;
-      ray_angles2.SaveToFile('ray_angles2.txt');
-    finally
-      ray_angles2.Free;
-    end;
 
   finally
     all_vector_angles.Free;
@@ -322,7 +342,7 @@ end;
 procedure Draw_Rays;
 begin
   Rays.Clear;
-  setLength(visibility_polygon,0);
+  intersects.Clear;
   Define_all_rays;
 
   var yellowBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
@@ -567,7 +587,7 @@ begin
     begin
       var tile:= tiles[X,Y];
       if tile=nil then continue;
-      
+
       var rect:= TRectF.Create(tile.origin,tile_size,tile_size);
       form1.Viewport3D1.Canvas.FillRect(rect,1,blueBrush);
     end;
@@ -581,6 +601,8 @@ begin
   Draw_Vertices;
   Draw_Polygons;
   Draw_Rays;
+  Draw_Intersects;
+  Draw_Visibility_Polygon;
   form1.Viewport3D1.Canvas.EndScene;
 end;
 
