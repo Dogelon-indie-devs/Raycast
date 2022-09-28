@@ -78,6 +78,7 @@ var
   tile_size: integer;
   tile_count: integer;
   created_rays: integer;
+  visibility_polygon_points: integer;
 
   tiles:      array of array of TTile;
   edges:      TObjectList<TEdge>;
@@ -176,9 +177,56 @@ begin
   end;
 end;
 
+function Points_on_same_axis(p1,p2: TPointF): boolean;
+begin
+  var same_x_axis:= p1.X = p2.X;
+  var same_y_axis:= p1.Y = p2.Y;
+  result:= same_x_axis OR same_y_axis;
+end;
+
+procedure Simplify_visibility_polygon;
+begin
+  visibility_polygon_points:= length(visibility_polygon);
+
+  var points:= TList<TPointF>.Create;
+  try
+    for var point in visibility_polygon do
+      points.Add(point);
+    setLength(visibility_polygon,0);
+
+    var removed_points:= 0;
+    for var i:= points.Count-1 downto 2 do
+      begin
+        var p1:= points[i];
+        var p2:= points[i-1];
+        var p3:= points[i-2];
+
+        if not Points_on_same_axis(p1,p3) then continue;
+
+        var middle_point_unnecessary:=
+          Points_on_same_axis(p1,p2) AND Points_on_same_axis(p2,p3);
+        if middle_point_unnecessary then
+          begin
+            points.Remove(p2);
+            inc(removed_points);
+          end;
+      end;
+
+    Breakpoint_placeholder;
+    setLength(visibility_polygon,points.Count);
+    for var i:= 0 to points.Count-1 do
+      begin
+        var point:= points[i];
+        visibility_polygon[i]:= point;
+      end;
+
+  finally
+    points.Free;
+  end;
+end;
+
 procedure Draw_Visibility_Polygon;
 var Comparison: TComparison<TVector>;
-
 begin
   setLength(visibility_polygon,0);
 
@@ -202,6 +250,8 @@ begin
       var point:= TPointF(ray).Round;
       visibility_polygon[i]:= point;
     end;
+
+  Simplify_visibility_polygon;
 
   var lightBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
   form1.Viewport3D1.Canvas.Fill:= lightBrush;
@@ -539,7 +589,9 @@ begin
     'Vertices: '+   Vertices.count.ToString +sLineBreak+
     'Polygons: '+   Polygons.count.ToString +sLineBreak+
     'Created Rays: '+created_rays.ToString +sLineBreak+
-    'Useful Rays: '+Rays.count.ToString;
+    'Useful Rays: '+Rays.count.ToString +sLineBreak+
+    'Vis poly raw: '+visibility_polygon_points.ToString +sLineBreak+
+    'Vis poly simplified: '+length(visibility_polygon).ToString;
 
   form1.Text1.Repaint;
 end;
