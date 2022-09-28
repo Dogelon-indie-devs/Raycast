@@ -350,8 +350,8 @@ begin
       var line1:= TBasicLine(edge);
       var line2:= TBasicLine.Create;
       try
-        line2.starts:= TPointF.Zero;
-        line2.ends:= TPointF(ray);
+        line2.starts:=TPointF.Zero;
+        line2.ends:=  TPointF(ray);
 
         var intersect: TPointF;
         try
@@ -363,9 +363,7 @@ begin
         intersects.add(intersect);
 
         var new_ray:= TVector.Create(intersect);
-        if rays.Contains(new_ray) then continue;
-
-        if new_ray.Length < shortest_ray.Length then
+        if  new_ray.Length < shortest_ray.Length then
           shortest_ray:= new_ray;
 
       finally
@@ -792,8 +790,7 @@ begin
     'Edges: '+      Edges.count.ToString +sLineBreak+
     'Vertices: '+   Vertices.count.ToString +sLineBreak+
     'Polygons: '+   Polygons.count.ToString +sLineBreak+
-    'Created Rays: '+created_rays.ToString +sLineBreak+
-    'Useful Rays: '+Rays.count.ToString +sLineBreak+
+    'Rays: '+created_rays.ToString +sLineBreak+
     'Vis poly raw: '+visibility_polygon_points.ToString +sLineBreak+
     'Vis poly simplified: '+length(visibility_polygon).ToString;
 
@@ -839,8 +836,8 @@ begin
   Draw_fixed_objects;
 
   form1.Viewport3D1.Canvas.BeginScene;
-  Draw_Rays;
-  Draw_Intersects;
+  //Draw_Rays;
+  //Draw_Intersects;
   Draw_Visibility_Polygon;
   form1.Viewport3D1.Canvas.EndScene;
 end;
