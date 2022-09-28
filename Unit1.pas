@@ -32,12 +32,12 @@ type
     Text1: TText;
     Timer1: TTimer;
     procedure Viewport3D1MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
-    procedure FormCreate(Sender: TObject);
     procedure Viewport3D1MouseUp(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Single);
     procedure Timer1Timer(Sender: TObject);
     procedure Viewport3D1MouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Single);
+    procedure FormShow(Sender: TObject);
   private
     { Private declarations }
   public
@@ -75,6 +75,7 @@ const
 var
   Form1: TForm1;
   painting_tiles: boolean;
+  light_position: TVector;
   tile_size: integer;
   tile_count: integer;
   created_rays: integer;
@@ -86,8 +87,12 @@ var
   polygons:   TList<TPolygon>;
   rays:       TList<TVector>;
   intersects: TList<TPointF>;
-
   visibility_polygon: TPolygon;
+
+procedure Draw_dynamic_objects;
+procedure Update_dynamic_objects;
+procedure Draw_fixed_objects;
+procedure Update_fixed_objects;
 
 implementation
 
@@ -136,7 +141,19 @@ begin
     end;
 end;
 
-procedure TForm1.FormCreate(Sender: TObject);
+procedure Place_tiles_on_screen_borders;
+begin
+  const max_value = Grid_size-1;
+  for var i := 0 to Grid_size-1 do
+    begin
+      TTile.Create(TPoint.Create(0,i));
+      TTile.Create(TPoint.Create(max_value,i));
+      TTile.Create(TPoint.Create(i,0));
+      TTile.Create(TPoint.Create(i,max_value));
+    end;
+end;
+
+procedure TForm1.FormShow(Sender: TObject);
 begin
   tile_count:= 0;
   setLength(tiles, 20, 20);
@@ -148,15 +165,17 @@ begin
   rays:=        TList<TVector>.Create;
   intersects:=  TList<TPointF>.Create;
 
-  TTile.Create(TPoint.Create(5,1));
+  Place_tiles_on_screen_borders;
+
   TTile.Create(TPoint.Create(5,2));
   TTile.Create(TPoint.Create(5,3));
   TTile.Create(TPoint.Create(5,4));
   TTile.Create(TPoint.Create(5,5));
-  TTile.Create(TPoint.Create(7,3));
+  TTile.Create(TPoint.Create(5,6));
+  TTile.Create(TPoint.Create(7,4));
 end;
 
-function Get_vector_angle(ray: TVector): single;
+function Get_vector_angle(ray: TVector): Double;
 begin
   var ray_as_point:= TPointF(ray);
   result:= ArcTan2(ray_as_point.Y,ray_as_point.X);
@@ -194,6 +213,19 @@ begin
       points.Add(point);
     setLength(visibility_polygon,0);
 
+    for var i:= points.Count-1 downto 1 do
+      begin
+        var p1:= points[i];
+        var p2:= points[i-1];
+
+        var duplicate_point:= p1=p2;
+        if  duplicate_point then
+          begin
+            points.Remove(p1);
+            continue;
+          end;
+      end;
+
     for var i:= points.Count-1 downto 2 do
       begin
         var p1:= points[i];
@@ -215,16 +247,24 @@ begin
         visibility_polygon[i]:= point;
       end;
 
+    var exported:= TStringList.Create;
+    try
+      for var point in points do
+        exported.Add( point.X.ToString +', '+ point.Y.ToString);
+      exported.SaveToFile('points.txt');
+
+    finally
+      exported.Free;
+    end;
+
   finally
     points.Free;
   end;
 end;
 
-procedure Draw_Visibility_Polygon;
+procedure Sort_rays_by_angle;
 var Comparison: TComparison<TVector>;
 begin
-  setLength(visibility_polygon,0);
-
   Comparison := function(const Left, Right: TVector): Integer
   begin
     var raw:= Get_vector_angle(left) - Get_vector_angle(right);
@@ -235,7 +275,11 @@ begin
   end;
 
   rays.Sort(TComparer<TVector>.Construct(Comparison));
+end;
 
+procedure Calculate_Visibility_Polygon;
+begin
+  setLength(visibility_polygon,0);
   setLength(visibility_polygon,rays.Count+1);
   var top_left_point:= TVector.Zero;
   visibility_polygon[0]:= TPointF(top_left_point);
@@ -248,36 +292,49 @@ begin
     end;
 
   Simplify_visibility_polygon;
+end;
 
+procedure Draw_Visibility_Polygon;
+begin
   var lightBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
   form1.Viewport3D1.Canvas.Fill:= lightBrush;
   form1.Viewport3D1.Canvas.FillPolygon(visibility_polygon,0.5);
 end;
 
-procedure Draw_intersection(intersect: TPointF);
+procedure Draw_Intersects;
 begin
   const circle_radius = 3;
 
   var greenBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Lime);
   greenBrush.Thickness:=1;
 
-  var rect:= TRectF.Create(
-    intersect.X-circle_radius,
-    intersect.Y-circle_radius,
-    intersect.X+circle_radius,
-    intersect.Y+circle_radius
-    );
-  form1.Viewport3D1.Canvas.DrawEllipse(rect,1,greenBrush);
-end;
-
-procedure Draw_Intersects;
-begin
   for var intersect in intersects do
-    Draw_intersection(intersect);
+    begin
+      var rect:= TRectF.Create(
+        intersect.X-circle_radius,
+        intersect.Y-circle_radius,
+        intersect.X+circle_radius,
+        intersect.Y+circle_radius
+      );
+      form1.Viewport3D1.Canvas.DrawEllipse(rect,1,greenBrush);
+    end;
 end;
 
-procedure Check_ray_against_edges(ray: TVector);
+procedure Add_new_ray(ray:TVector);
 begin
+  if rays.Contains(ray) then exit;
+  if ray = TVector.Zero then exit;
+  if (ray.X<0) OR (ray.Y<0) then exit;
+  var inf_vector := TVector.Create(Infinity,Infinity);
+  if ray = inf_vector then exit;
+
+  Rays.Add(ray);
+end;
+
+function Check_against_edges_return_shortest(ray: TVector): TVector;
+begin
+  var shortest_ray:= TVector.Create(Infinity,Infinity);
+
   for var edge in edges do
     begin
       var line1:= TBasicLine(edge);
@@ -293,31 +350,31 @@ begin
           continue;
         end;
 
-        if intersect = edge.starts  then continue;
-        if intersect = edge.ends    then continue;
+        intersects.add(intersect);
 
         var new_ray:= TVector.Create(intersect);
-        if rays.Contains(new_ray)   then continue;
+        if rays.Contains(new_ray) then continue;
 
-        intersects.add(intersect);
-        rays.Add(new_ray);
-        Draw_intersection(intersect);
+        if new_ray.Length < shortest_ray.Length then
+          shortest_ray:= new_ray;
 
       finally
         if line2 <> nil then
           line2.Free;
       end;
     end;
+
+  result:= shortest_ray;
 end;
 
-function Number_within_tolerance(number: single; tolerance: single): boolean;
+function Number_within_tolerance(number: Double; tolerance: Double): boolean;
 begin
   var upper_limit:= number + tolerance;
   var lower_limit:= number - tolerance;
   result:= (number>lower_limit) AND (number<upper_limit);
 end;
 
-function Number_within_tolerance_of_another(tested_number,limit_number: single; tolerance: single): boolean;
+function Number_within_tolerance_of_another(tested_number,limit_number: Double; tolerance: Double): boolean;
 begin
   var upper_limit:= limit_number + tolerance;
   var lower_limit:= limit_number - tolerance;
@@ -326,7 +383,7 @@ end;
 
 const tolerance = 0.0001;
 
-procedure Seek_shortest_vector_for_each_angle(angle: single);
+procedure Seek_shortest_vector_for_each_angle(angle: Double);
 begin
   var previous_shortest_ray:= TVector.Create(Infinity,Infinity);
 
@@ -357,40 +414,56 @@ begin
     end;
 end;
 
-procedure Define_all_rays;
+function Compensate_for_light_position(ray:TVector): TVector;
+begin
+  result:= light_position + ray;
+end;
+
+procedure Cast_rays;
+const new_vector_length = 2000;
+const angle_move = 0.0001;
+
+  function Create_new_ray(angle: double): TVector;
+  begin
+    var rdx:= new_vector_length * cos(angle);
+    var rdy:= new_vector_length * sin(angle);
+    var raw_vector:= TVector.Create(rdx,rdy);
+    result:= Compensate_for_light_position(raw_vector);
+  end;
+
 begin
   for var vertex in vertices do
     begin
-      var ray:= TVector.Create(vertex);
-      Check_ray_against_edges(ray);
-      rays.Add(ray);
+      var v_middle:= Compensate_for_light_position( TVector.Create(vertex) );
+      var shortest_ray:= Check_against_edges_return_shortest(v_middle);
+      Add_new_ray(shortest_ray);
+
+      var angle:= Get_vector_angle(v_middle);
+      var v_higher:= Create_new_ray( angle + angle_move );
+      var v_lower := Create_new_ray( angle - angle_move );
+
+      var v_higher_shortest:= Check_against_edges_return_shortest(v_higher);
+      var v_lower__shortest:= Check_against_edges_return_shortest(v_lower);
+
+      if v_higher_shortest.Length > v_lower__shortest.Length then
+        Add_new_ray(v_higher_shortest)
+      else
+        Add_new_ray(v_lower__shortest);
     end;
 
   created_rays:= rays.Count;
+end;
 
-  var all_vector_angles:= TList<Single>.Create;
-  try
-    for var ray in rays do
-      begin
-        var angle:= Get_vector_angle(ray);
-        if not all_vector_angles.Contains(angle) then
-          all_vector_angles.Add(angle);
-      end;
-
-    for var angle in all_vector_angles do
-      Seek_shortest_vector_for_each_angle(angle);
-
-  finally
-    all_vector_angles.Free;
-  end;
+procedure Calculate_Rays;
+begin
+  Rays.Clear;
+  intersects.Clear;
+  Cast_rays;
+  Sort_rays_by_angle;
 end;
 
 procedure Draw_Rays;
 begin
-  Rays.Clear;
-  intersects.Clear;
-  Define_all_rays;
-
   var yellowBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
   yellowBrush.Thickness:=1;
 
@@ -400,7 +473,7 @@ begin
   var top_left_point:= TPointF.Zero;
 
   for var ray in rays do
-    form1.Viewport3D1.Canvas.DrawLine(top_left_point,TPointF(ray),10,yellowBrush);
+    form1.Viewport3D1.Canvas.DrawLine(top_left_point,TPointF(ray),1,yellowBrush);
 end;
 
 function Vertex_already_known(tested_vertex: TPoint): boolean;
@@ -411,7 +484,7 @@ begin
       exit(true);
 end;
 
-procedure Extract_all_vertices_from_edges;
+procedure Calculate_vertices;
 begin
   vertices.Clear;
 
@@ -426,12 +499,9 @@ end;
 
 procedure Draw_Vertices;
 begin
-  Extract_all_vertices_from_edges;
-
+  const circle_radius = 3;
   var redBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Red);
   redBrush.Thickness:=3;
-
-  const circle_radius = 3;
 
   for var vertex in vertices do
     begin
@@ -459,7 +529,7 @@ begin
   raise Exception.Create('Disconnected edge!');
 end;
 
-procedure Create_polygons_from_edges;
+procedure Calculate_polygons;
 var new_endpoint: TPoint;
     polygon: TPolygon;
 
@@ -505,8 +575,6 @@ end;
 
 procedure Draw_Polygons;
 begin
-  Create_polygons_from_edges;
-
   var purpleBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Purple);
   form1.Viewport3D1.Canvas.Fill:= purpleBrush;
 
@@ -530,10 +598,9 @@ begin
     end;
 end;
 
-procedure Draw_Edges;
+procedure Calculate_edges;
 begin
   Delete_all_known_edges;
-  //Place_edges_on_screen_borders;
 
   for var x := 0 to Grid_size-1 do
   for var y := 0 to Grid_size-1 do
@@ -542,7 +609,10 @@ begin
       if tile=nil then continue;
       tile.Get_or_create_edges;
     end;
+end;
 
+procedure Draw_Edges;
+begin
   var whiteBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.White);
   whiteBrush.Thickness:=1;
 
@@ -576,58 +646,35 @@ begin
     end;
 end;
 
-procedure TForm1.Timer1Timer(Sender: TObject);
+procedure Move_light(X,Y: single);
 begin
-  form1.Text1.text:=
-    'Statistics: '+ sLineBreak+
-    'Tiles: '+      Tile_count.ToString +sLineBreak+
-    'Edges: '+      Edges.count.ToString +sLineBreak+
-    'Vertices: '+   Vertices.count.ToString +sLineBreak+
-    'Polygons: '+   Polygons.count.ToString +sLineBreak+
-    'Created Rays: '+created_rays.ToString +sLineBreak+
-    'Useful Rays: '+Rays.count.ToString +sLineBreak+
-    'Vis poly raw: '+visibility_polygon_points.ToString +sLineBreak+
-    'Vis poly simplified: '+length(visibility_polygon).ToString;
+  var light:= TPoint.Create(round(X),round(Y));
+  light_position:= TVector.Create(light);
 
-  form1.Text1.Repaint;
-end;
-
-procedure TForm1.Viewport3D1MouseDown(Sender: TObject; Button: TMouseButton;
-  Shift: TShiftState; X, Y: Single);
-begin
-  if not (Button=TMouseButton.mbLeft) then exit;
-
-  var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
-  var tile:= tiles[mouse_over_tile.X,mouse_over_tile.Y];
-  var tile_already_exists:= tile<>nil;
-
-  painting_tiles:= not tile_already_exists;
-end;
-
-procedure TForm1.Viewport3D1MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
-begin
-  var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
-  //Text1.Text:= 'Tile X:'+mouse_over_tile.X.ToString+', Y:'+mouse_over_tile.Y.ToString;
-
-  if not (ssLeft in Shift) then exit;
-  Work_with_tile_under_cursor(mouse_over_tile);
+  Update_dynamic_objects;
 end;
 
 procedure TForm1.Viewport3D1MouseUp(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Single);
 begin
-  if not (Button=TMouseButton.mbLeft) then exit;
-
-  var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
-  Work_with_tile_under_cursor(mouse_over_tile);
+  case button of
+    TMouseButton.mbLeft:
+      begin
+        var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
+        Work_with_tile_under_cursor(mouse_over_tile);
+      end;
+    TMouseButton.mbRight:
+      begin
+        Move_light(X,Y);
+      end;
+    TMouseButton.mbMiddle: ;
+  end;
 end;
 
 { TTile }
 
 procedure Draw_Tiles;
 begin
-  form1.Viewport3D1.Canvas.Clear(TAlphaColorRec.Teal);
-
   var blueBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Blue);
 
   for var x := 0 to Grid_size-1 do
@@ -641,26 +688,13 @@ begin
     end;
 end;
 
-procedure Update_all_tiles;
-begin
-  form1.Viewport3D1.Canvas.BeginScene;
-  Draw_Tiles;
-  Draw_Edges;
-  Draw_Vertices;
-  Draw_Polygons;
-  Draw_Rays;
-  Draw_Intersects;
-  Draw_Visibility_Polygon;
-  form1.Viewport3D1.Canvas.EndScene;
-end;
-
 constructor TTile.Create(position: TPoint);
 begin
   self.X:= position.X;
   self.Y:= position.Y;
   self.origin:= TPoint.Create(X*tile_size,Y*tile_size);
   tiles[position.X,position.Y]:= self;
-  Update_all_tiles;
+  Update_fixed_objects;
   inc(tile_count);
 end;
 
@@ -668,7 +702,7 @@ procedure TTile.Remove(position: TPoint);
 begin
   tiles[position.X,position.Y].Free;
   tiles[position.X,position.Y]:= nil;
-  Update_all_tiles;
+  Update_fixed_objects;
   dec(tile_count);
 end;
 
@@ -799,6 +833,90 @@ begin
     dEast:  result:= dWest;
     else raise Exception.Create('Direction Error');
   end;
+end;
+
+procedure TForm1.Timer1Timer(Sender: TObject);
+begin
+  if form1.Viewport3D1.Tag=0 then
+    begin
+      form1.Viewport3D1.Tag:= 1;
+      Draw_fixed_objects;
+    end;
+
+  form1.Text1.text:=
+    'Statistics: '+ sLineBreak+
+    'Tiles: '+      Tile_count.ToString +sLineBreak+
+    'Edges: '+      Edges.count.ToString +sLineBreak+
+    'Vertices: '+   Vertices.count.ToString +sLineBreak+
+    'Polygons: '+   Polygons.count.ToString +sLineBreak+
+    'Created Rays: '+created_rays.ToString +sLineBreak+
+    'Useful Rays: '+Rays.count.ToString +sLineBreak+
+    'Vis poly raw: '+visibility_polygon_points.ToString +sLineBreak+
+    'Vis poly simplified: '+length(visibility_polygon).ToString;
+
+  form1.Text1.Repaint;
+end;
+
+procedure TForm1.Viewport3D1MouseDown(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Single);
+begin
+  if not (Button=TMouseButton.mbLeft) then exit;
+
+  var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
+  var tile:= tiles[mouse_over_tile.X,mouse_over_tile.Y];
+  var tile_already_exists:= tile<>nil;
+
+  painting_tiles:= not tile_already_exists;
+end;
+
+procedure TForm1.Viewport3D1MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
+begin
+  var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
+  //Text1.Text:= 'Tile X:'+mouse_over_tile.X.ToString+', Y:'+mouse_over_tile.Y.ToString;
+
+  if not (ssLeft in Shift) then exit;
+  Work_with_tile_under_cursor(mouse_over_tile);
+end;
+
+procedure Draw_dynamic_objects;
+begin
+  Draw_fixed_objects;
+
+  form1.Viewport3D1.Canvas.BeginScene;
+  Draw_Rays;
+  Draw_Intersects;
+  Draw_Visibility_Polygon;
+  form1.Viewport3D1.Canvas.EndScene;
+end;
+
+procedure Update_dynamic_objects;
+begin
+  Calculate_Rays;
+  Calculate_Visibility_Polygon;
+
+  Draw_dynamic_objects;
+end;
+
+procedure Draw_fixed_objects;
+begin
+  if form1.Viewport3D1.Tag=0 then exit;
+
+  form1.Viewport3D1.Canvas.BeginScene;
+  form1.Viewport3D1.Canvas.Clear(TAlphaColorRec.Teal);
+  Draw_Tiles;
+  Draw_Edges;
+  Draw_Vertices;
+  //Draw_Polygons;
+  form1.Viewport3D1.Canvas.EndScene;
+end;
+
+procedure Update_fixed_objects;
+begin
+  Calculate_edges;
+  Calculate_vertices;
+  Calculate_polygons;
+
+  Draw_fixed_objects;
 end;
 
 end.
