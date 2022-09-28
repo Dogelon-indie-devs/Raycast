@@ -138,7 +138,6 @@ begin
       TTile.Create(TPoint.Create(i,max_value));
     end;
 
-  TTile.Create(TPoint.Create(5,4));
   (*
   TTile.Create(TPoint.Create(5,2));
   TTile.Create(TPoint.Create(5,3));
@@ -160,7 +159,8 @@ begin
   rays:=        TList<TVector>.Create;
   intersects:=  TList<TPointF>.Create;
 
-  Place_scene_tiles;
+  TTile.Create(TPoint.Create(5,4));
+  //Place_scene_tiles;
 end;
 
 function Get_vector_angle(ray: TVector): Double;
@@ -286,8 +286,10 @@ begin
   for var ray in rays do
     form1.Viewport3D1.Canvas.DrawLine(light_point,TPointF(ray),1,yellowBrush);
 
+  (*
   for var vertex in vertices do
     form1.Viewport3D1.Canvas.DrawLine(light_point,vertex,1,yellowBrush);
+  *)
 end;
 
 procedure Draw_Vertices;
@@ -344,8 +346,7 @@ end;
 procedure Add_new_ray(ray:TVector);
 begin
   if ray = TVector.Zero then exit;
-  if (ray.X<0) OR (ray.Y<0) then exit;
-  if (ray.X>2000) OR (ray.Y>2000) then exit;
+  //if (ray.X>2000) OR (ray.Y>2000) then exit;
   if rays.Contains(ray) then exit;
   Rays.Add(ray);
 end;
@@ -362,25 +363,38 @@ const angle_move = 0.0001;
     result:= raw_vector;
   end;
 
+  function Point_to_string(point: TPointF): string;
+  begin
+    result:= point.X.ToString +', '+point.Y.ToString;
+  end;
+
   function Check_against_edges_return_shortest(ray: TVector): TVector;
   begin
     var shortest_ray:= TVector.Create(Infinity,Infinity);
 
-    for var edge in edges do
-      begin
-        var line1:= TBasicLine(edge);
-        var line2:= TBasicLine.Create;
-        try
-          if use_mouse_as_light then
-            line2.starts:= TPointF(light_position)
-          else
-            line2.starts:= TPointF.Zero;
+    var line_ray:= TBasicLine.Create;
+    try
+      if use_mouse_as_light then
+        line_ray.starts:= TPointF(light_position)
+      else
+        line_ray.starts:= TPointF.Zero;
+      line_ray.ends:= TPointF(light_position) + TPointF(ray);
 
-          line2.ends:= TPointF(ray);
+      for var edge in edges do
+        begin
+          var line_edge:= TBasicLine(edge);
+          (*
+          ShowMessage(
+            'Target: '+Point_to_string(vertices[0]) +sLineBreak+
+            'Mouse: ' +Point_to_string(light_position.ToPointF) +sLineBreak+
+            'Vector: '+Point_to_string(ray.ToPointF)
+            );
+          Breakpoint_placeholder;
+          *)
 
           var intersect: TPointF;
           try
-            intersect:= Find_intersection_point(line1,line2);
+            intersect:= Find_intersection_point(line_edge,line_ray);
           except
             continue;
           end;
@@ -390,20 +404,20 @@ const angle_move = 0.0001;
           var new_ray:= TVector.Create(intersect);
           if  new_ray.Length < shortest_ray.Length then
             shortest_ray:= new_ray;
-
-        finally
-          if line2 <> nil then
-            line2.Free;
         end;
-      end;
 
-    result:= shortest_ray;
+      result:= shortest_ray;
+
+    finally
+      if line_ray <> nil then
+        line_ray.Free;
+    end;
   end;
 
 begin
   for var vertex in vertices do
     begin
-      var v_middle:= TVector.Create(vertex);
+      var v_middle:= TVector.Create(vertex - TPointF(light_position) );
       var v_middle_shortest:= Check_against_edges_return_shortest(v_middle);
       Add_new_ray(v_middle_shortest);
 
@@ -818,10 +832,20 @@ end;
 procedure TForm1.Viewport3D1MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
 begin
   mouse_position:= TPoint.Create(round(X),round(Y));
-  if not (ssLeft in Shift) then exit;
+  if (ssLeft in Shift) then
+    begin
+      var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
+      Work_with_tile_under_cursor(mouse_over_tile);
+    end;
 
-  var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
-  Work_with_tile_under_cursor(mouse_over_tile);
+  (*
+  var purpleBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Purple);
+  purpleBrush.Thickness:=1;
+  var first_vertex:= vertices[0];
+  form1.Viewport3D1.Canvas.BeginScene;
+  form1.Viewport3D1.Canvas.DrawLine(mouse_position,first_vertex,1,purpleBrush);
+  form1.Viewport3D1.Canvas.EndScene;
+  *)
 end;
 
 procedure Draw_dynamic_objects;

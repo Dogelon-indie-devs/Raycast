@@ -5,7 +5,8 @@ interface
 uses
   System.Classes,
   System.Types,
-  System.SysUtils;
+  System.SysUtils,
+  System.Math;
 
 type ELinesParallel = class(Exception);
 type ELineSegmentDontIntersect = class(Exception);
@@ -43,21 +44,53 @@ begin
     raise ELinesParallel.Create('The given lines are parallel');
 end;
 
+function Bounding_rect_from_line(line: TBasicLine): TRectF;
+var top,left,right,bottom: single;
+begin
+  top:=   IfThen(line.starts.Y < line.ends.Y,line.starts.Y,line.ends.Y);
+  left:=  IfThen(line.starts.X < line.ends.X,line.starts.X,line.ends.X);
+  right:= IfThen(line.starts.X > line.ends.X,line.starts.X,line.ends.X);
+  bottom:=IfThen(line.starts.Y > line.ends.Y,line.starts.Y,line.ends.Y);
+
+  var topleft:=     TPointF.Create(left,top);
+  var bottomright:= TPointF.Create(right,bottom);
+
+  result:= TRectF.Create(topleft,bottomright);
+end;
+
+function Combine_bounding_rects(rect1,rect2: TRectF): TRectF;
+var top,left,right,bottom: single;
+begin
+  top:=   IfThen(rect1.Top    < rect2.Top,    rect1.Top,    rect2.Top);
+  left:=  IfThen(rect1.left   < rect2.left,   rect1.left,   rect2.left);
+  right:= IfThen(rect1.right  > rect2.right,  rect1.right,  rect2.right);
+  bottom:=IfThen(rect1.bottom > rect2.bottom, rect1.bottom, rect2.bottom);
+
+  var topleft:=     TPointF.Create(left,top);
+  var bottomright:= TPointF.Create(right,bottom);
+
+  result:= TRectF.Create(topleft,bottomright);
+end;
+
+function Point_in_bounding_rectangles(point: TPointF; line1,line2: TBasicLine): boolean;
+begin
+  var rect1:= Bounding_rect_from_line(line1);
+  var rect2:= Bounding_rect_from_line(line1);
+  var bounding_rect:= Combine_bounding_rects(rect1,rect2);
+
+  result:=(point.Y >= bounding_rect.Top)   AND
+          (point.X >= bounding_rect.Left)  AND
+          (point.X <= bounding_rect.Right) AND
+          (point.Y <= bounding_rect.Bottom);
+end;
+
 function Find_intersection_point(line1,line2: TBasicLine): TPointF;
 begin
   var intersection :=
     Line_Line_Intersection(line1.starts,line1.ends,line2.starts,line2.ends);
 
-  if  (intersection.X < line1.starts.X) OR
-      (intersection.X > line1.ends.X) OR
-      (intersection.X < line2.starts.X) OR
-      (intersection.X > line2.ends.X) OR
-
-      (intersection.Y < line1.starts.Y) OR
-      (intersection.Y > line1.ends.Y) OR
-      (intersection.Y < line2.starts.Y) OR
-      (intersection.Y > line2.ends.Y) then
-  raise ELineSegmentDontIntersect.Create('Intersect outside of the lines');
+  if not Point_in_bounding_rectangles(intersection,line1,line2) then
+    raise ELineSegmentDontIntersect.Create('Intersect outside of the lines');
 
   result:= intersection;
 
