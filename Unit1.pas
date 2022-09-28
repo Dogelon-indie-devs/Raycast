@@ -152,6 +152,7 @@ begin
   TTile.Create(TPoint.Create(5,3));
   TTile.Create(TPoint.Create(5,4));
   TTile.Create(TPoint.Create(5,5));
+  TTile.Create(TPoint.Create(7,3));
 end;
 
 procedure Draw_intersection(intersect: TPointF);
@@ -190,16 +191,65 @@ begin
         if intersect = edge.starts  then continue;
         if intersect = edge.ends    then continue;
 
-        intersects.add(intersect);
         var new_ray:= TVector.Create(intersect);
-        rays.Add(new_ray);
+        if rays.Contains(new_ray)   then continue;
 
+        intersects.add(intersect);
+        rays.Add(new_ray);
         Draw_intersection(intersect);
 
       finally
         if line2 <> nil then
           line2.Free;
       end;
+    end;
+end;
+
+function Number_within_tolerance(number: single; tolerance: single): boolean;
+begin
+  var upper_limit:= number + tolerance;
+  var lower_limit:= number - tolerance;
+  result:= (number>lower_limit) AND (number<upper_limit);
+end;
+
+function Number_within_tolerance_of_another(tested_number,limit_number: single; tolerance: single): boolean;
+begin
+  var upper_limit:= limit_number + tolerance;
+  var lower_limit:= limit_number - tolerance;
+  result:= (tested_number>lower_limit) AND (tested_number<upper_limit);
+end;
+
+const tolerance = 0.0001;
+
+procedure Seek_shortest_vector_for_each_angle(angle: single);
+begin
+  var previous_shortest_ray:= TVector.Create(Infinity,Infinity);
+
+  for var i:= rays.Count-1 downto 0 do
+    begin
+      var ray:= rays[i];
+      var ray_as_point:= TPointF(ray);
+      var ray_angle:= ArcTan2(ray_as_point.Y,ray_as_point.X);
+
+      const tested_angle = 0.463647603988647;
+      var looking_for_this_angle:=
+        Number_within_tolerance_of_another(ray_angle,tested_angle,tolerance);
+
+      var identical_angles:= ray_angle = angle;
+      var within_tolerance:=
+        Number_within_tolerance_of_another(ray_angle,angle,tolerance);
+      if not(identical_angles) AND within_tolerance AND looking_for_this_angle then
+        Breakpoint_placeholder;
+
+      if not(identical_angles OR within_tolerance) then continue;
+
+      if ray.Length < previous_shortest_ray.Length then
+        begin
+          rays.Remove(previous_shortest_ray);
+          previous_shortest_ray:= ray;
+        end
+      else
+        rays.Remove(ray);
     end;
 end;
 
@@ -226,8 +276,6 @@ begin
           all_vector_angles.Add(angle);
       end;
 
-    const tolerance = 0.0001;
-
     var angle_list:= TStringList.Create;
     try
       for var angle in all_vector_angles do
@@ -251,31 +299,7 @@ begin
     end;
 
     for var angle in all_vector_angles do
-      begin
-        var previous_shortest_ray:= TVector.Create(Infinity,Infinity);
-
-        for var ray in rays do
-          begin
-            var ray_as_point:= TPointF(ray);
-            var ray_angle:= ArcTan2(ray_as_point.Y,ray_as_point.X);
-
-            var identical_angles:= ray_angle = angle;
-            var within_tolerance:= abs(ray_angle - angle) < tolerance;
-            if not identical_angles AND within_tolerance then
-              Breakpoint_placeholder;
-
-            if not(identical_angles OR within_tolerance) then continue;
-
-            if ray.Length < previous_shortest_ray.Length then
-              begin
-                if rays.Contains(previous_shortest_ray) then
-                   rays.Remove(previous_shortest_ray);
-                previous_shortest_ray:= ray;
-              end
-            else
-              rays.Remove(ray);
-          end;
-      end;
+      Seek_shortest_vector_for_each_angle(angle);
 
     var ray_angles2:= TStringList.Create;
     try
