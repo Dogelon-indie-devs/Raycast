@@ -116,7 +116,6 @@ begin
         var point:= TPointF(ray).Round;
         rays_points.Add(point.X.ToString +','+ point.Y.ToString);
       end;
-
     rays_points.SaveToFile(filename);
   finally
     rays_points.Free;
@@ -346,6 +345,7 @@ end;
 procedure Add_new_ray(ray:TVector);
 begin
   if ray = TVector.Zero then exit;
+  if ray.Length>2000 then exit;
   //if (ray.X>2000) OR (ray.Y>2000) then exit;
   if rays.Contains(ray) then exit;
   Rays.Add(ray);
@@ -378,19 +378,11 @@ const angle_move = 0.0001;
         line_ray.starts:= TPointF(light_position)
       else
         line_ray.starts:= TPointF.Zero;
-      line_ray.ends:= TPointF(light_position) + TPointF(ray);
+      line_ray.ends:= TPointF(ray);
 
       for var edge in edges do
         begin
           var line_edge:= TBasicLine(edge);
-          (*
-          ShowMessage(
-            'Target: '+Point_to_string(vertices[0]) +sLineBreak+
-            'Mouse: ' +Point_to_string(light_position.ToPointF) +sLineBreak+
-            'Vector: '+Point_to_string(ray.ToPointF)
-            );
-          Breakpoint_placeholder;
-          *)
 
           var intersect: TPointF;
           try
@@ -417,7 +409,7 @@ const angle_move = 0.0001;
 begin
   for var vertex in vertices do
     begin
-      var v_middle:= TVector.Create(vertex - TPointF(light_position) );
+      var v_middle:= TVector.Create(vertex);
       var v_middle_shortest:= Check_against_edges_return_shortest(v_middle);
       Add_new_ray(v_middle_shortest);
 
@@ -461,6 +453,7 @@ begin
   Cast_rays;
   Save_ray_endpoints_into_txt_file('rays.txt');
   Sort_rays_by_angle;
+  Save_ray_endpoints_into_txt_file('rays2.txt');
 end;
 
 procedure Calculate_vertices;
@@ -836,6 +829,10 @@ begin
     begin
       var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
       Work_with_tile_under_cursor(mouse_over_tile);
+    end;
+  if (ssRight in Shift) then
+    begin
+      Move_light(X,Y);
     end;
 
   (*
