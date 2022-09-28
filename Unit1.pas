@@ -75,6 +75,7 @@ const
 var
   Form1: TForm1;
   painting_tiles: boolean;
+  mouse_position: TPoint;
   light_position: TVector;
   tile_size: integer;
   tile_count: integer;
@@ -146,9 +147,9 @@ begin
   const max_value = Grid_size-1;
   for var i := 0 to Grid_size-1 do
     begin
-      TTile.Create(TPoint.Create(0,i));
+      //TTile.Create(TPoint.Create(0,i));
+      //TTile.Create(TPoint.Create(i,0));
       TTile.Create(TPoint.Create(max_value,i));
-      TTile.Create(TPoint.Create(i,0));
       TTile.Create(TPoint.Create(i,max_value));
     end;
 end;
@@ -213,6 +214,16 @@ begin
       points.Add(point);
     setLength(visibility_polygon,0);
 
+    var exported:= TStringList.Create;
+    try
+      for var point in points do
+        exported.Add( point.X.ToString +', '+ point.Y.ToString);
+      exported.SaveToFile('points1.txt');
+
+    finally
+      exported.Free;
+    end;
+
     for var i:= points.Count-1 downto 1 do
       begin
         var p1:= points[i];
@@ -247,14 +258,14 @@ begin
         visibility_polygon[i]:= point;
       end;
 
-    var exported:= TStringList.Create;
+    var exported2:= TStringList.Create;
     try
       for var point in points do
-        exported.Add( point.X.ToString +', '+ point.Y.ToString);
-      exported.SaveToFile('points.txt');
+        exported2.Add( point.X.ToString +', '+ point.Y.ToString);
+      exported2.SaveToFile('points2.txt');
 
     finally
-      exported.Free;
+      exported2.Free;
     end;
 
   finally
@@ -325,8 +336,7 @@ begin
   if rays.Contains(ray) then exit;
   if ray = TVector.Zero then exit;
   if (ray.X<0) OR (ray.Y<0) then exit;
-  var inf_vector := TVector.Create(Infinity,Infinity);
-  if ray = inf_vector then exit;
+  if (ray.X>2000) OR (ray.Y>2000) then exit;
 
   Rays.Add(ray);
 end;
@@ -367,58 +377,6 @@ begin
   result:= shortest_ray;
 end;
 
-function Number_within_tolerance(number: Double; tolerance: Double): boolean;
-begin
-  var upper_limit:= number + tolerance;
-  var lower_limit:= number - tolerance;
-  result:= (number>lower_limit) AND (number<upper_limit);
-end;
-
-function Number_within_tolerance_of_another(tested_number,limit_number: Double; tolerance: Double): boolean;
-begin
-  var upper_limit:= limit_number + tolerance;
-  var lower_limit:= limit_number - tolerance;
-  result:= (tested_number>lower_limit) AND (tested_number<upper_limit);
-end;
-
-const tolerance = 0.0001;
-
-procedure Seek_shortest_vector_for_each_angle(angle: Double);
-begin
-  var previous_shortest_ray:= TVector.Create(Infinity,Infinity);
-
-  for var i:= rays.Count-1 downto 0 do
-    begin
-      var ray:= rays[i];
-      var ray_angle:= Get_vector_angle(ray);
-
-      const tested_angle = 0.463647603988647;
-      var looking_for_this_angle:=
-        Number_within_tolerance_of_another(ray_angle,tested_angle,tolerance);
-
-      var identical_angles:= ray_angle = angle;
-      var within_tolerance:=
-        Number_within_tolerance_of_another(ray_angle,angle,tolerance);
-      if not(identical_angles) AND within_tolerance AND looking_for_this_angle then
-        Breakpoint_placeholder;
-
-      if not(identical_angles OR within_tolerance) then continue;
-
-      if ray.Length < previous_shortest_ray.Length then
-        begin
-          rays.Remove(previous_shortest_ray);
-          previous_shortest_ray:= ray;
-        end
-      else
-        rays.Remove(ray);
-    end;
-end;
-
-function Compensate_for_light_position(ray:TVector): TVector;
-begin
-  result:= light_position + ray;
-end;
-
 procedure Cast_rays;
 const new_vector_length = 2000;
 const angle_move = 0.0001;
@@ -428,13 +386,13 @@ const angle_move = 0.0001;
     var rdx:= new_vector_length * cos(angle);
     var rdy:= new_vector_length * sin(angle);
     var raw_vector:= TVector.Create(rdx,rdy);
-    result:= Compensate_for_light_position(raw_vector);
+    result:= raw_vector;
   end;
 
 begin
   for var vertex in vertices do
     begin
-      var v_middle:= Compensate_for_light_position( TVector.Create(vertex) );
+      var v_middle:= TVector.Create(vertex);
       var shortest_ray:= Check_against_edges_return_shortest(v_middle);
       Add_new_ray(shortest_ray);
 
@@ -467,13 +425,10 @@ begin
   var yellowBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
   yellowBrush.Thickness:=1;
 
-  var vector_to_center:= TVector.Create(TPointF.Create(Form_size,Form_size));
-  var center_point:= TPointF(vector_to_center);
-
-  var top_left_point:= TPointF.Zero;
+  var light_point:= TPointF(light_position);
 
   for var ray in rays do
-    form1.Viewport3D1.Canvas.DrawLine(top_left_point,TPointF(ray),1,yellowBrush);
+    form1.Viewport3D1.Canvas.DrawLine(light_point,TPointF(ray),1,yellowBrush);
 end;
 
 function Vertex_already_known(tested_vertex: TPoint): boolean;
@@ -648,27 +603,13 @@ end;
 
 procedure Move_light(X,Y: single);
 begin
+  (*
   var light:= TPoint.Create(round(X),round(Y));
   light_position:= TVector.Create(light);
+  *)
+  light_position:= TVector.Create(TPointF.Zero);
 
   Update_dynamic_objects;
-end;
-
-procedure TForm1.Viewport3D1MouseUp(Sender: TObject; Button: TMouseButton;
-  Shift: TShiftState; X, Y: Single);
-begin
-  case button of
-    TMouseButton.mbLeft:
-      begin
-        var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
-        Work_with_tile_under_cursor(mouse_over_tile);
-      end;
-    TMouseButton.mbRight:
-      begin
-        Move_light(X,Y);
-      end;
-    TMouseButton.mbMiddle: ;
-  end;
 end;
 
 { TTile }
@@ -844,6 +785,8 @@ begin
     end;
 
   form1.Text1.text:=
+    'Mouse: X:'+mouse_position.X.ToString +', Y:'+ mouse_position.Y.ToString +sLineBreak+
+    sLineBreak+
     'Statistics: '+ sLineBreak+
     'Tiles: '+      Tile_count.ToString +sLineBreak+
     'Edges: '+      Edges.count.ToString +sLineBreak+
@@ -857,24 +800,37 @@ begin
   form1.Text1.Repaint;
 end;
 
-procedure TForm1.Viewport3D1MouseDown(Sender: TObject; Button: TMouseButton;
-  Shift: TShiftState; X, Y: Single);
+procedure Determine_painting_mode(X,Y: single);
 begin
-  if not (Button=TMouseButton.mbLeft) then exit;
-
   var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
   var tile:= tiles[mouse_over_tile.X,mouse_over_tile.Y];
   var tile_already_exists:= tile<>nil;
-
   painting_tiles:= not tile_already_exists;
+end;
+
+procedure TForm1.Viewport3D1MouseDown(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Single);
+begin
+  case button of
+    TMouseButton.mbLeft: Determine_painting_mode(X,Y);
+  end;
+end;
+
+procedure TForm1.Viewport3D1MouseUp(Sender: TObject; Button: TMouseButton;
+  Shift: TShiftState; X, Y: Single);
+begin
+  case button of
+    TMouseButton.mbLeft: Work_with_tile_under_cursor( Mouse_coords_to_tile_pos(X, Y) );
+    TMouseButton.mbRight:Move_light(X,Y);
+  end;
 end;
 
 procedure TForm1.Viewport3D1MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
 begin
-  var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
-  //Text1.Text:= 'Tile X:'+mouse_over_tile.X.ToString+', Y:'+mouse_over_tile.Y.ToString;
-
+  mouse_position:= TPoint.Create(round(X),round(Y));
   if not (ssLeft in Shift) then exit;
+
+  var mouse_over_tile:= Mouse_coords_to_tile_pos(X, Y);
   Work_with_tile_under_cursor(mouse_over_tile);
 end;
 

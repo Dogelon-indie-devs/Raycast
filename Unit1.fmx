@@ -22,10 +22,10 @@ object Form1: TForm1
     OnMouseUp = Viewport3D1MouseUp
   end
   object Text1: TText
-    Position.X = 592.000000000000000000
+    Position.X = 536.000000000000000000
     Position.Y = 48.000000000000000000
-    Size.Width = 153.000000000000000000
-    Size.Height = 145.000000000000000000
+    Size.Width = 209.000000000000000000
+    Size.Height = 233.000000000000000000
     Size.PlatformDefault = False
     TextSettings.FontColor = claYellow
     TextSettings.HorzAlign = Leading
