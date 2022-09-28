@@ -71,7 +71,7 @@ type
 const
   Grid_size = 20;
   Form_size = 800;
-  use_mouse_as_light = false;
+  use_mouse_as_light = true;
 
 var
   Form1: TForm1;
@@ -107,6 +107,22 @@ begin
 
 end;
 
+procedure Save_ray_endpoints_into_txt_file(filename:string);
+begin
+  var rays_points:= TStringList.Create;
+  try
+    for var ray in rays do
+      begin
+        var point:= TPointF(ray).Round;
+        rays_points.Add(point.X.ToString +','+ point.Y.ToString);
+      end;
+
+    rays_points.SaveToFile(filename);
+  finally
+    rays_points.Free;
+  end;
+end;
+
 procedure Place_scene_tiles;
 begin
   const max_value = Grid_size-1;
@@ -122,12 +138,14 @@ begin
       TTile.Create(TPoint.Create(i,max_value));
     end;
 
+  TTile.Create(TPoint.Create(5,4));
+  (*
   TTile.Create(TPoint.Create(5,2));
   TTile.Create(TPoint.Create(5,3));
-  TTile.Create(TPoint.Create(5,4));
   TTile.Create(TPoint.Create(5,5));
   TTile.Create(TPoint.Create(5,6));
   TTile.Create(TPoint.Create(7,4));
+  *)
 end;
 
 procedure TForm1.FormShow(Sender: TObject);
@@ -267,6 +285,9 @@ begin
 
   for var ray in rays do
     form1.Viewport3D1.Canvas.DrawLine(light_point,TPointF(ray),1,yellowBrush);
+
+  for var vertex in vertices do
+    form1.Viewport3D1.Canvas.DrawLine(light_point,vertex,1,yellowBrush);
 end;
 
 procedure Draw_Vertices;
@@ -355,7 +376,7 @@ const angle_move = 0.0001;
           else
             line2.starts:= TPointF.Zero;
 
-          line2.ends:=  TPointF(ray);
+          line2.ends:= TPointF(ray);
 
           var intersect: TPointF;
           try
@@ -424,6 +445,7 @@ begin
   intersects.Clear;
 
   Cast_rays;
+  Save_ray_endpoints_into_txt_file('rays.txt');
   Sort_rays_by_angle;
 end;
 
