@@ -194,7 +194,6 @@ begin
       points.Add(point);
     setLength(visibility_polygon,0);
 
-    var removed_points:= 0;
     for var i:= points.Count-1 downto 2 do
       begin
         var p1:= points[i];
@@ -206,13 +205,9 @@ begin
         var middle_point_unnecessary:=
           Points_on_same_axis(p1,p2) AND Points_on_same_axis(p2,p3);
         if middle_point_unnecessary then
-          begin
-            points.Remove(p2);
-            inc(removed_points);
-          end;
+          points.Remove(p2);
       end;
 
-    Breakpoint_placeholder;
     setLength(visibility_polygon,points.Count);
     for var i:= 0 to points.Count-1 do
       begin
@@ -242,7 +237,8 @@ begin
   rays.Sort(TComparer<TVector>.Construct(Comparison));
 
   setLength(visibility_polygon,rays.Count+1);
-  visibility_polygon[0]:= TVector.Zero;
+  var top_left_point:= TVector.Zero;
+  visibility_polygon[0]:= TPointF(top_left_point);
 
   for var i:= 0 to rays.Count-1 do
     begin
