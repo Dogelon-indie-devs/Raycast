@@ -15,7 +15,8 @@ type TBasicLine = class
   starts, ends: TPointF;
 end;
 
-function Find_intersection_point(line1,line2: TBasicLine): TPointF;
+function Find_intersection_point(line_edge,line_ray: TBasicLine): TPoint;
+function Point_in_bounding_rectangles(point: TPointF; line1,line2: TBasicLine): boolean;
 
 implementation
 
@@ -72,10 +73,31 @@ begin
   result:= TRectF.Create(topleft,bottomright);
 end;
 
+function Point_in_bounding_rectangle(point: TPointF; line: TBasicLine): boolean; overload;
+begin
+  var bounding_rect:= Bounding_rect_from_line(line);
+
+  result:=(point.Y >= bounding_rect.Top)    AND
+          (point.X >= bounding_rect.Left)   AND
+          (point.X <= bounding_rect.Right)  AND
+          (point.Y <= bounding_rect.Bottom);
+end;
+
+function Point_in_bounding_rectangle(point: TPointF; bounding_rect: TRectF): boolean; overload;
+begin
+  result:=(point.Y >= bounding_rect.Top)    AND
+          (point.X >= bounding_rect.Left)   AND
+          (point.X <= bounding_rect.Right)  AND
+          (point.Y <= bounding_rect.Bottom);
+end;
+
 function Point_in_bounding_rectangles(point: TPointF; line1,line2: TBasicLine): boolean;
 begin
   var rect1:= Bounding_rect_from_line(line1);
-  var rect2:= Bounding_rect_from_line(line1);
+  if not Point_in_bounding_rectangle(point,rect1) then exit(false);
+  var rect2:= Bounding_rect_from_line(line2);
+  if not Point_in_bounding_rectangle(point,rect2) then exit(false);
+
   var bounding_rect:= Combine_bounding_rects(rect1,rect2);
 
   result:=(point.Y >= bounding_rect.Top)   AND
@@ -84,18 +106,19 @@ begin
           (point.Y <= bounding_rect.Bottom);
 end;
 
-function Find_intersection_point(line1,line2: TBasicLine): TPointF;
+function Find_intersection_point(line_edge,line_ray: TBasicLine): TPoint;
 begin
-  var intersection :=
-    Line_Line_Intersection(line1.starts,line1.ends,line2.starts,line2.ends);
+  var intersection := Line_Line_Intersection(
+    line_edge.starts,
+    line_edge.ends,
+    line_ray.starts,
+    line_ray.ends
+    );
 
-  if not Point_in_bounding_rectangles(intersection,line1,line2) then
+  if not Point_in_bounding_rectangle(intersection,line_edge) then
     raise ELineSegmentDontIntersect.Create('Intersect outside of the lines');
 
-  result:= intersection;
-
-  // NOTE: Further check can be applied in case of line segments. Here, we have considered AB and CD as lines
-  //Log('The intersection of the given lines AB and CD is: '+intersection.X.ToString+','+intersection.Y.ToString);
+  result:= intersection.Round;
 end;
 
 

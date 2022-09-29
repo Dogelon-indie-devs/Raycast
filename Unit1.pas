@@ -90,6 +90,9 @@ var
   intersects: TList<TPointF>;
   visibility_polygon: TPolygon;
 
+  debug_data: TStringList;
+
+
 procedure Draw_dynamic_objects;
 procedure Draw_fixed_objects;
 procedure Update_dynamic_objects;
@@ -120,13 +123,15 @@ begin
       begin
         var point:= TPointF(ray).Round;
         var angle:= Get_vector_angle(ray);
+        var deg:= radtodeg( Get_vector_angle(ray) );
         var len:= round(ray.Length);
 
         rays_points.Add(
           point.X.ToString +','+
           point.Y.ToString +', '+
           'len: '+len.ToString +', '+
-          'angle: '+angle.ToString
+          'angle: '+angle.ToString +', '+
+          'deg: '+deg.ToString
           );
       end;
 
@@ -142,21 +147,13 @@ begin
   const max_value = Grid_size-1;
   for var i := 0 to Grid_size-1 do
     begin
-      if use_mouse_as_light then
-        begin
-          TTile.Create(TPoint.Create(0,i));
-          TTile.Create(TPoint.Create(i,0));
-        end;
-
+      TTile.Create(TPoint.Create(i,0));
+      (*
+      TTile.Create(TPoint.Create(0,i));
       TTile.Create(TPoint.Create(max_value,i));
       TTile.Create(TPoint.Create(i,max_value));
+      *)
     end;
-
-  TTile.Create(TPoint.Create(5,2));
-  TTile.Create(TPoint.Create(5,3));
-  TTile.Create(TPoint.Create(5,5));
-  TTile.Create(TPoint.Create(5,6));
-  TTile.Create(TPoint.Create(7,4));
 end;
 
 procedure TForm1.FormShow(Sender: TObject);
@@ -171,8 +168,18 @@ begin
   rays:=        TList<TVector>.Create;
   intersects:=  TList<TPointF>.Create;
 
+  TTile.Create(TPoint.Create(4,4));
   TTile.Create(TPoint.Create(5,4));
-  //Place_scene_tiles;
+  TTile.Create(TPoint.Create(4,5));
+  TTile.Create(TPoint.Create(5,5));
+
+  (*
+  TTile.Create(TPoint.Create(10,10));
+  TTile.Create(TPoint.Create(10,11));
+  TTile.Create(TPoint.Create(11,10));
+  TTile.Create(TPoint.Create(11,11));
+  *)
+  Place_scene_tiles;
 end;
 
 procedure Simplify_visibility_polygon;
@@ -349,12 +356,17 @@ begin
     form1.Viewport3D1.Canvas.FillPolygon(polygon,0.5);
 end;
 
-procedure Add_new_ray(ray:TVector);
+function Add_new_ray(ray:TVector): boolean;
 begin
-  if ray = TVector.Zero then exit;
-  if ray.Length>3000    then exit;
-  if rays.Contains(ray) then exit;
-  Rays.Add(ray);
+  result:= true;
+  if (ray = TVector.Zero) OR
+  //   (ray.Length>5000)    OR
+     (rays.Contains(ray)) then result:= false;
+
+  if result then
+    Rays.Add(ray)
+  else
+    breakpoint_placeholder;
 end;
 
 function Compensate_vector_for_light_position(ray:TVector): TVector;
@@ -365,9 +377,72 @@ begin
   result:= TVector.Create(compensated_point);
 end;
 
+function Point_to_string(point: TPointF): string;
+begin
+  result:= point.X.ToString +', '+point.Y.ToString;
+end;
+
+function Find_closest_intersect(ray: TVector): TVector;
+var intersect: TPoint;
+begin
+  var shortest_ray:= TVector.Create(Infinity,Infinity);
+  var shortest_len:= Infinity;
+
+  var line_ray:= TBasicLine.Create;
+  try
+    if use_mouse_as_light then
+      line_ray.starts:= TPointF(light_position)
+    else
+      line_ray.starts:= TPointF.Zero;
+    line_ray.ends:= TPointF(ray);
+
+    for var edge in edges do
+      begin
+        var line_edge:= TBasicLine(edge);
+
+        try
+          intersect:= Find_intersection_point(line_edge,line_ray);
+        except
+          on E: ELineSegmentDontIntersect do continue;
+          on E: ELinesParallel            do continue;
+        end;
+
+        var valid_intersect:= Point_in_bounding_rectangles(
+          intersect,
+          line_edge,
+          line_ray
+          );
+        if not valid_intersect then
+          continue;
+
+        var line_data:=
+          Point_to_string(line_ray.starts) +' / '+
+          Point_to_string(line_ray.ends) +'; '+
+          Point_to_string(intersect);
+        debug_data.Add(line_data);
+
+        intersects.add(intersect);
+
+        var len:= light_position.Distance(intersect);
+        if  len < shortest_len then
+          begin
+            shortest_len:= len;
+            shortest_ray:= TVector.Create(intersect);
+          end;
+
+      end;
+
+    result:= shortest_ray;
+
+  finally
+    if line_ray <> nil then
+      line_ray.Free;
+  end;
+end;
+
 procedure Cast_rays;
-const new_vector_length = 5000;
-const angle_move = 0.0001;
+const new_vector_length = 1000;
+const angle_move = 0.001;
 
   function Create_new_ray(angle: double): TVector;
   begin
@@ -377,71 +452,30 @@ const angle_move = 0.0001;
     result:= raw_vector;
   end;
 
-  function Point_to_string(point: TPointF): string;
-  begin
-    result:= point.X.ToString +', '+point.Y.ToString;
-  end;
-
-  function Check_against_edges_return_shortest(ray: TVector): TVector;
-  begin
-    var shortest_ray:= TVector.Create(Infinity,Infinity);
-    var shortest_len:= Infinity;
-
-    var line_ray:= TBasicLine.Create;
-    try
-      if use_mouse_as_light then
-        line_ray.starts:= TPointF(light_position)
-      else
-        line_ray.starts:= TPointF.Zero;
-      line_ray.ends:= TPointF(ray);
-
-      for var edge in edges do
-        begin
-          var line_edge:= TBasicLine(edge);
-
-          var intersect: TPointF;
-          try
-            intersect:= Find_intersection_point(line_edge,line_ray);
-          except
-            continue;
-          end;
-
-          intersects.add(intersect);
-
-          var len:= intersect.Distance(light_position);
-          if  len < shortest_len then
-            begin
-              shortest_len:= len;
-              shortest_ray:= TVector.Create(intersect);
-            end;
-        end;
-
-      result:= shortest_ray;
-
-    finally
-      if line_ray <> nil then
-        line_ray.Free;
-    end;
-  end;
-
 begin
   for var vertex in vertices do
     begin
-      var v_middle:= Compensate_vector_for_light_position( TVector.Create(vertex) );
-      var v_middle_shortest:= Check_against_edges_return_shortest(v_middle);
+      var v_middle:= TVector.Create(vertex);
+      var v_middle_shortest:= Find_closest_intersect(v_middle);
       Add_new_ray(v_middle_shortest);
 
-      var angle:= Get_vector_angle(v_middle);
+      var direct_LOS:= v_middle = v_middle_shortest;
+      if not direct_LOS then continue;
+
+      var angle:= light_position.Angle(vertex);
       var v_higher:= Create_new_ray( angle + angle_move );
       var v_lower := Create_new_ray( angle - angle_move );
 
-      var v_higher_shortest:= Check_against_edges_return_shortest(v_higher);
-      var v_lower__shortest:= Check_against_edges_return_shortest(v_lower);
+      var v_higher_shortest:= Find_closest_intersect(v_higher);
+      var v_lower__shortest:= Find_closest_intersect(v_lower);
 
       if v_higher_shortest.Length > v_lower__shortest.Length then
         Add_new_ray(v_higher_shortest)
       else
         Add_new_ray(v_lower__shortest);
+
+      if vertex=TPoint.Create(160,240) then
+        Breakpoint_placeholder;
     end;
 end;
 
@@ -470,10 +504,13 @@ procedure Calculate_Rays;
 begin
   Rays.Clear;
   intersects.Clear;
+  debug_data.Clear;
 
   Cast_rays;
   Sort_rays_by_angle;
+
   Save_ray_endpoints_into_txt_file('rays2.txt');
+  debug_data.SaveToFile('lines_with_intersects.txt');
 end;
 
 procedure Calculate_vertices;
@@ -793,8 +830,17 @@ end;
 
 procedure Update_stats_text;
 begin
+  var mouse_over_tile:= Mouse_coords_to_tile_pos(mouse_position.X,mouse_position.Y);
+
+  (*
+  form1.Viewport3D1.Canvas.BeginScene;
+  form1.Viewport3D1.Canvas.FillText();
+  form1.Viewport3D1.Canvas.EndScene;
+  *)
+
   form1.Text1.text:=
-    'Mouse: X:'+mouse_position.X.ToString +', Y:'+ mouse_position.Y.ToString +sLineBreak+
+    'Mouse: X:'+mouse_position.X.ToString +', Y:'+ mouse_position.Y.ToString  +sLineBreak+
+    'Tile: X:'+ mouse_over_tile.X.ToString+', Y:'+ mouse_over_tile.Y.ToString +sLineBreak+
     sLineBreak+
     'Statistics: '+ sLineBreak+
     'Tiles: '+      Tile_count.ToString +sLineBreak+
@@ -802,6 +848,7 @@ begin
     'Vertices: '+   Vertices.count.ToString +sLineBreak+
     'Polygons: '+   Polygons.count.ToString +sLineBreak+
     'Rays: '+       rays.Count.ToString +sLineBreak+
+    'Intersects: '+ intersects.Count.ToString +sLineBreak+
     'Vis poly raw: '+visibility_polygon_points.ToString +sLineBreak+
     'Vis poly simplified: '+length(visibility_polygon).ToString;
 
@@ -900,5 +947,11 @@ begin
 
   Draw_fixed_objects;
 end;
+
+initialization
+  debug_data:= TStringList.Create;
+
+finalization
+  debug_data.Free;
 
 end.
