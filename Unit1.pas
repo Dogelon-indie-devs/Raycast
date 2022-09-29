@@ -80,7 +80,6 @@ var
   light_position: TPoint;
   tile_size: integer;
   tile_count: integer;
-  created_rays: integer;
   visibility_polygon_points: integer;
 
   tiles:      array of array of TTile;
@@ -92,8 +91,8 @@ var
   visibility_polygon: TPolygon;
 
 procedure Draw_dynamic_objects;
-procedure Update_dynamic_objects;
 procedure Draw_fixed_objects;
+procedure Update_dynamic_objects;
 procedure Update_fixed_objects;
 
 implementation
@@ -153,13 +152,11 @@ begin
       TTile.Create(TPoint.Create(i,max_value));
     end;
 
-  (*
   TTile.Create(TPoint.Create(5,2));
   TTile.Create(TPoint.Create(5,3));
   TTile.Create(TPoint.Create(5,5));
   TTile.Create(TPoint.Create(5,6));
   TTile.Create(TPoint.Create(7,4));
-  *)
 end;
 
 procedure TForm1.FormShow(Sender: TObject);
@@ -355,14 +352,21 @@ end;
 procedure Add_new_ray(ray:TVector);
 begin
   if ray = TVector.Zero then exit;
-  if ray.Length>2000 then exit;
-  //if (ray.X>2000) OR (ray.Y>2000) then exit;
+  if ray.Length>3000    then exit;
   if rays.Contains(ray) then exit;
   Rays.Add(ray);
 end;
 
+function Compensate_vector_for_light_position(ray:TVector): TVector;
+var point,compensated_point: TPoint;
+begin
+  point:= TPointF(ray).Round;
+  compensated_point:= point - light_position;
+  result:= TVector.Create(compensated_point);
+end;
+
 procedure Cast_rays;
-const new_vector_length = 2000;
+const new_vector_length = 5000;
 const angle_move = 0.0001;
 
   function Create_new_ray(angle: double): TVector;
@@ -423,7 +427,7 @@ const angle_move = 0.0001;
 begin
   for var vertex in vertices do
     begin
-      var v_middle:= TVector.Create(vertex);
+      var v_middle:= Compensate_vector_for_light_position( TVector.Create(vertex) );
       var v_middle_shortest:= Check_against_edges_return_shortest(v_middle);
       Add_new_ray(v_middle_shortest);
 
@@ -439,16 +443,6 @@ begin
       else
         Add_new_ray(v_lower__shortest);
     end;
-
-  created_rays:= rays.Count;
-end;
-
-function Compensate_vector_for_light_position(ray:TVector): TVector;
-var point,compensated_point: TPoint;
-begin
-  point:= TPointF(ray).Round;
-  compensated_point:= point - light_position;
-  result:= TVector.Create(compensated_point);
 end;
 
 procedure Calculate_Rays;
@@ -478,7 +472,6 @@ begin
   intersects.Clear;
 
   Cast_rays;
-  Save_ray_endpoints_into_txt_file('rays.txt');
   Sort_rays_by_angle;
   Save_ray_endpoints_into_txt_file('rays2.txt');
 end;
@@ -522,7 +515,7 @@ begin
       visibility_polygon[i+1]:= point;
     end;
 
-  Simplify_visibility_polygon;
+  //Simplify_visibility_polygon;
 end;
 
 procedure Calculate_polygons;
@@ -798,14 +791,8 @@ begin
   end;
 end;
 
-procedure TForm1.Timer1Timer(Sender: TObject);
+procedure Update_stats_text;
 begin
-  if form1.Viewport3D1.Tag=0 then
-    begin
-      form1.Viewport3D1.Tag:= 1;
-      Draw_fixed_objects;
-    end;
-
   form1.Text1.text:=
     'Mouse: X:'+mouse_position.X.ToString +', Y:'+ mouse_position.Y.ToString +sLineBreak+
     sLineBreak+
@@ -814,11 +801,22 @@ begin
     'Edges: '+      Edges.count.ToString +sLineBreak+
     'Vertices: '+   Vertices.count.ToString +sLineBreak+
     'Polygons: '+   Polygons.count.ToString +sLineBreak+
-    'Rays: '+created_rays.ToString +sLineBreak+
+    'Rays: '+       rays.Count.ToString +sLineBreak+
     'Vis poly raw: '+visibility_polygon_points.ToString +sLineBreak+
     'Vis poly simplified: '+length(visibility_polygon).ToString;
 
   form1.Text1.Repaint;
+end;
+
+procedure TForm1.Timer1Timer(Sender: TObject);
+begin
+  if form1.Viewport3D1.Tag=0 then
+    begin
+      form1.Viewport3D1.Tag:= 1;
+      Draw_fixed_objects;
+    end;
+
+  Update_stats_text;
 end;
 
 procedure Determine_painting_mode(X,Y: single);
@@ -859,14 +857,7 @@ begin
       Move_light(X,Y);
     end;
 
-  (*
-  var purpleBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Purple);
-  purpleBrush.Thickness:=1;
-  var first_vertex:= vertices[0];
-  form1.Viewport3D1.Canvas.BeginScene;
-  form1.Viewport3D1.Canvas.DrawLine(mouse_position,first_vertex,1,purpleBrush);
-  form1.Viewport3D1.Canvas.EndScene;
-  *)
+  Update_stats_text;
 end;
 
 procedure Draw_dynamic_objects;
@@ -876,7 +867,7 @@ begin
   form1.Viewport3D1.Canvas.BeginScene;
   Draw_Rays;
   Draw_Intersects;
-  Draw_Visibility_Polygon;
+  //Draw_Visibility_Polygon;
   form1.Viewport3D1.Canvas.EndScene;
 end;
 
