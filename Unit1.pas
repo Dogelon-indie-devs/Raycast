@@ -77,7 +77,7 @@ var
   Form1: TForm1;
   painting_tiles: boolean;
   mouse_position: TPoint;
-  light_position: TVector;
+  light_position: TPoint;
   tile_size: integer;
   tile_count: integer;
   created_rays: integer;
@@ -107,6 +107,12 @@ begin
 
 end;
 
+function Get_vector_angle(ray: TVector): Double;
+begin
+  var ray_as_point:= TPointF(ray);
+  result:= ArcTan2(ray_as_point.Y,ray_as_point.X);
+end;
+
 procedure Save_ray_endpoints_into_txt_file(filename:string);
 begin
   var rays_points:= TStringList.Create;
@@ -114,9 +120,19 @@ begin
     for var ray in rays do
       begin
         var point:= TPointF(ray).Round;
-        rays_points.Add(point.X.ToString +','+ point.Y.ToString);
+        var angle:= Get_vector_angle(ray);
+        var len:= round(ray.Length);
+
+        rays_points.Add(
+          point.X.ToString +','+
+          point.Y.ToString +', '+
+          'len: '+len.ToString +', '+
+          'angle: '+angle.ToString
+          );
       end;
+
     rays_points.SaveToFile(filename);
+
   finally
     rays_points.Free;
   end;
@@ -160,12 +176,6 @@ begin
 
   TTile.Create(TPoint.Create(5,4));
   //Place_scene_tiles;
-end;
-
-function Get_vector_angle(ray: TVector): Double;
-begin
-  var ray_as_point:= TPointF(ray);
-  result:= ArcTan2(ray_as_point.Y,ray_as_point.X);
 end;
 
 procedure Simplify_visibility_polygon;
@@ -371,6 +381,7 @@ const angle_move = 0.0001;
   function Check_against_edges_return_shortest(ray: TVector): TVector;
   begin
     var shortest_ray:= TVector.Create(Infinity,Infinity);
+    var shortest_len:= Infinity;
 
     var line_ray:= TBasicLine.Create;
     try
@@ -393,9 +404,12 @@ const angle_move = 0.0001;
 
           intersects.add(intersect);
 
-          var new_ray:= TVector.Create(intersect);
-          if  new_ray.Length < shortest_ray.Length then
-            shortest_ray:= new_ray;
+          var len:= intersect.Distance(light_position);
+          if  len < shortest_len then
+            begin
+              shortest_len:= len;
+              shortest_ray:= TVector.Create(intersect);
+            end;
         end;
 
       result:= shortest_ray;
@@ -429,6 +443,14 @@ begin
   created_rays:= rays.Count;
 end;
 
+function Compensate_vector_for_light_position(ray:TVector): TVector;
+var point,compensated_point: TPoint;
+begin
+  point:= TPointF(ray).Round;
+  compensated_point:= point - light_position;
+  result:= TVector.Create(compensated_point);
+end;
+
 procedure Calculate_Rays;
 
   procedure Sort_rays_by_angle;
@@ -436,7 +458,12 @@ procedure Calculate_Rays;
   begin
     Comparison := function(const Left, Right: TVector): Integer
     begin
-      var raw:= Get_vector_angle(left) - Get_vector_angle(right);
+      var left2:= Compensate_vector_for_light_position(left);
+      var left_angle:= Get_vector_angle(left2);
+      var right2:= Compensate_vector_for_light_position(right);
+      var right_angle:= Get_vector_angle(right2);
+
+      var raw:= left_angle - right_angle;
       if raw>0 then
         result:= ceil(raw)
       else
@@ -615,12 +642,9 @@ end;
 procedure Move_light(X,Y: single);
 begin
   if use_mouse_as_light then
-    begin
-      var light:= TPoint.Create(round(X),round(Y));
-      light_position:= TVector.Create(light);
-    end
+    light_position:= TPoint.Create(round(X),round(Y))
   else
-    light_position:= TVector.Zero;
+    light_position:= TPoint.Zero;
 
   Update_dynamic_objects;
 end;
