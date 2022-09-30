@@ -144,7 +144,7 @@ end;
 
 procedure Place_scene_tiles;
 begin
-    const max_value = Grid_size-1;
+  const max_value = Grid_size-1;
   for var i := 0 to Grid_size-1 do
     begin
       TTile.Create(TPoint.Create(i,0));
@@ -181,6 +181,7 @@ begin
 end;
 
 procedure Simplify_visibility_polygon;
+var points: TList<TPointF>;
 
   function Points_on_same_axis(p1,p2: TPointF): boolean;
   begin
@@ -189,25 +190,8 @@ procedure Simplify_visibility_polygon;
     result:= same_x_axis OR same_y_axis;
   end;
 
-begin
-  visibility_polygon_points:= length(visibility_polygon);
-
-  var points:= TList<TPointF>.Create;
-  try
-    for var point in visibility_polygon do
-      points.Add(point);
-    setLength(visibility_polygon,0);
-
-    var exported:= TStringList.Create;
-    try
-      for var point in points do
-        exported.Add( point.X.ToString +', '+ point.Y.ToString);
-      exported.SaveToFile('points1.txt');
-
-    finally
-      exported.Free;
-    end;
-
+  procedure Remove_duplicate_points;
+  begin
     for var i:= points.Count-1 downto 1 do
       begin
         var p1:= points[i];
@@ -215,12 +199,12 @@ begin
 
         var duplicate_point:= p1=p2;
         if  duplicate_point then
-          begin
-            points.Remove(p1);
-            continue;
-          end;
+          points.Remove(p1);
       end;
+  end;
 
+  procedure Skip_unnecessary_points_on_edges;
+  begin
     for var i:= points.Count-1 downto 2 do
       begin
         var p1:= points[i];
@@ -234,23 +218,44 @@ begin
         if middle_point_unnecessary then
           points.Remove(p2);
       end;
+  end;
 
-    setLength(visibility_polygon,points.Count);
-    for var i:= 0 to points.Count-1 do
-      begin
-        var point:= points[i];
-        visibility_polygon[i]:= point;
-      end;
-
-    var exported2:= TStringList.Create;
+  procedure Export_vis_poly_points_to_file(filename: string);
+  begin
+    var exported:= TStringList.Create;
     try
       for var point in points do
-        exported2.Add( point.X.ToString +', '+ point.Y.ToString);
-      exported2.SaveToFile('points2.txt');
-
+        exported.Add( point.X.ToString +', '+ point.Y.ToString);
+      exported.SaveToFile(filename);
     finally
-      exported2.Free;
+      exported.Free;
     end;
+  end;
+
+  procedure Move_points_to_list;
+  begin
+    for var point in visibility_polygon do
+      points.Add(point);
+    setLength(visibility_polygon,0);
+  end;
+
+  procedure Move_points_back_to_polygon;
+  begin
+    setLength(visibility_polygon,points.Count);
+    for var i:= 0 to points.Count-1 do
+      visibility_polygon[i]:= points[i];
+  end;
+
+begin
+  visibility_polygon_points:= length(visibility_polygon);
+
+  points:= TList<TPointF>.Create;
+  try
+    Move_points_to_list;
+    Remove_duplicate_points;
+    Skip_unnecessary_points_on_edges;
+    Move_points_back_to_polygon;
+    Export_vis_poly_points_to_file('poly_points.txt');
 
   finally
     points.Free;
