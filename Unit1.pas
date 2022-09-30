@@ -144,15 +144,13 @@ end;
 
 procedure Place_scene_tiles;
 begin
-  const max_value = Grid_size-1;
+    const max_value = Grid_size-1;
   for var i := 0 to Grid_size-1 do
     begin
       TTile.Create(TPoint.Create(i,0));
-      (*
       TTile.Create(TPoint.Create(0,i));
       TTile.Create(TPoint.Create(max_value,i));
       TTile.Create(TPoint.Create(i,max_value));
-      *)
     end;
 end;
 
@@ -383,7 +381,7 @@ begin
 end;
 
 function Find_closest_intersect(ray: TVector): TVector;
-var intersect: TPoint;
+var intersect: TPointF;
 begin
   var shortest_ray:= TVector.Create(Infinity,Infinity);
   var shortest_len:= Infinity;
@@ -423,13 +421,12 @@ begin
 
         intersects.add(intersect);
 
-        var len:= light_position.Distance(intersect);
+        var len:= TPointF(light_position).Distance(intersect);
         if  len < shortest_len then
           begin
             shortest_len:= len;
             shortest_ray:= TVector.Create(intersect);
           end;
-
       end;
 
     result:= shortest_ray;
@@ -440,16 +437,50 @@ begin
   end;
 end;
 
+function Adjusted_point(point: TPointF): TPointF;
+begin
+  result:= point - light_position;
+end;
+
+function Distance_light_to_point(point: TpointF): single;
+begin
+  result:= TPointF(light_position).Distance(point);
+end;
+
+function Distance_light_to_unadjusted_vector(ray: TVector): single;
+begin
+  var vector_point:= TPointF(ray);
+  result:= Distance_light_to_point(vector_point);
+end;
+
 procedure Cast_rays;
-const new_vector_length = 1000;
+const new_vector_length = 500;
 const angle_move = 0.001;
 
   function Create_new_ray(angle: double): TVector;
   begin
     var rdx:= new_vector_length * cos(angle);
     var rdy:= new_vector_length * sin(angle);
-    var raw_vector:= TVector.Create(rdx,rdy);
+    var adjust_for_light_pos:= TPointF.Create(rdx,rdy) + light_position;
+    var raw_vector:= TVector.Create(adjust_for_light_pos);
     result:= raw_vector;
+  end;
+
+  procedure Add_ray_which_can_see_further(ray1,ray2: TVector);
+  begin
+    var ray1_len:= Distance_light_to_unadjusted_vector(ray1);
+    var ray2_len:= Distance_light_to_unadjusted_vector(ray2);
+
+    if ray1_len > ray2_len then
+      Add_new_ray(ray1)
+    else
+      Add_new_ray(ray2);
+  end;
+
+  procedure Add_both_rays_for_debug(ray1,ray2: TVector);
+  begin
+    Add_new_ray(ray1);
+    Add_new_ray(ray2);
   end;
 
 begin
@@ -462,20 +493,23 @@ begin
       var direct_LOS:= v_middle = v_middle_shortest;
       if not direct_LOS then continue;
 
-      var angle:= light_position.Angle(vertex);
-      var v_higher:= Create_new_ray( angle + angle_move );
-      var v_lower := Create_new_ray( angle - angle_move );
+      if (vertex=TPoint.Create(160,240)) OR (vertex=TPoint.Create(240,240)) then
+        Breakpoint_placeholder
+      else
+        continue;
 
+      var adjusted_vertex:= Adjusted_point(vertex);
+      var angle:= Get_vector_angle(adjusted_vertex);
+      var angle_higher:= angle + angle_move;
+      var angle_lower := angle - angle_move;
+
+      var v_higher:= Create_new_ray( angle_higher );
+      var v_lower := Create_new_ray( angle_lower  );
       var v_higher_shortest:= Find_closest_intersect(v_higher);
       var v_lower__shortest:= Find_closest_intersect(v_lower);
 
-      if v_higher_shortest.Length > v_lower__shortest.Length then
-        Add_new_ray(v_higher_shortest)
-      else
-        Add_new_ray(v_lower__shortest);
-
-      if vertex=TPoint.Create(160,240) then
-        Breakpoint_placeholder;
+      Add_ray_which_can_see_further(v_higher_shortest,v_lower__shortest);
+      //Add_both_rays_for_debug(v_higher_shortest,v_lower__shortest);
     end;
 end;
 
@@ -552,7 +586,7 @@ begin
       visibility_polygon[i+1]:= point;
     end;
 
-  //Simplify_visibility_polygon;
+  Simplify_visibility_polygon;
 end;
 
 procedure Calculate_polygons;
@@ -914,7 +948,7 @@ begin
   form1.Viewport3D1.Canvas.BeginScene;
   Draw_Rays;
   Draw_Intersects;
-  //Draw_Visibility_Polygon;
+  Draw_Visibility_Polygon;
   form1.Viewport3D1.Canvas.EndScene;
 end;
 

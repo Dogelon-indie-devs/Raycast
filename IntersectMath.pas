@@ -15,7 +15,7 @@ type TBasicLine = class
   starts, ends: TPointF;
 end;
 
-function Find_intersection_point(line_edge,line_ray: TBasicLine): TPoint;
+function Find_intersection_point(line_edge,line_ray: TBasicLine): TPointF;
 function Point_in_bounding_rectangles(point: TPointF; line1,line2: TBasicLine): boolean;
 
 implementation
@@ -106,7 +106,7 @@ begin
           (point.Y <= bounding_rect.Bottom);
 end;
 
-function Find_intersection_point(line_edge,line_ray: TBasicLine): TPoint;
+function Find_intersection_point(line_edge,line_ray: TBasicLine): TPointF;
 begin
   var intersection := Line_Line_Intersection(
     line_edge.starts,
@@ -118,7 +118,7 @@ begin
   if not Point_in_bounding_rectangle(intersection,line_edge) then
     raise ELineSegmentDontIntersect.Create('Intersect outside of the lines');
 
-  result:= intersection.Round;
+  result:= intersection;
 end;
 
 
