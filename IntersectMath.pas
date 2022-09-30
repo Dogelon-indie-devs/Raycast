@@ -115,7 +115,7 @@ begin
     line_ray.ends
     );
 
-  if not Point_in_bounding_rectangle(intersection,line_edge) then
+  if not Point_in_bounding_rectangles(intersection,line_edge, line_ray) then
     raise ELineSegmentDontIntersect.Create('Intersect outside of the lines');
 
   result:= intersection;

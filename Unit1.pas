@@ -71,7 +71,6 @@ type
 const
   Grid_size = 20;
   Form_size = 800;
-  use_mouse_as_light = true;
 
 var
   Form1: TForm1;
@@ -81,6 +80,7 @@ var
   tile_size: integer;
   tile_count: integer;
   visibility_polygon_points: integer;
+  display_stats: boolean;
 
   tiles:      array of array of TTile;
   edges:      TObjectList<TEdge>;
@@ -135,7 +135,7 @@ begin
           );
       end;
 
-    rays_points.SaveToFile(filename);
+    //rays_points.SaveToFile(filename);
 
   finally
     rays_points.Free;
@@ -253,11 +253,9 @@ begin
   points:= TList<TPointF>.Create;
   try
     Move_points_to_list;
-    Export_vis_poly_points_to_file('poly_points1.txt');
     Remove_duplicate_points;
     Skip_unnecessary_points_on_edges;
     Move_points_back_to_polygon;
-    Export_vis_poly_points_to_file('poly_points2.txt');
 
   finally
     points.Free;
@@ -311,18 +309,10 @@ begin
   var yellowBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
   yellowBrush.Thickness:=1;
 
-  if use_mouse_as_light then
-    light_point:= TPointF(light_position)
-  else
-    light_point:= TPointF.Zero;
+  light_point:= TPointF(light_position);
 
   for var ray in rays do
     form1.Viewport3D1.Canvas.DrawLine(light_point,TPointF(ray),1,yellowBrush);
-
-  (*
-  for var vertex in vertices do
-    form1.Viewport3D1.Canvas.DrawLine(light_point,vertex,1,yellowBrush);
-  *)
 end;
 
 procedure Draw_Vertices;
@@ -410,11 +400,8 @@ begin
 
   var line_ray:= TBasicLine.Create;
   try
-    if use_mouse_as_light then
-      line_ray.starts:= TPointF(light_position)
-    else
-      line_ray.starts:= TPointF.Zero;
-    line_ray.ends:= TPointF(ray);
+    line_ray.starts:= TPointF(light_position);
+    line_ray.ends:=   TPointF(ray);
 
     for var edge in edges do
       begin
@@ -426,20 +413,6 @@ begin
           on E: ELineSegmentDontIntersect do continue;
           on E: ELinesParallel            do continue;
         end;
-
-        var valid_intersect:= Point_in_bounding_rectangles(
-          intersect,
-          line_edge,
-          line_ray
-          );
-        if not valid_intersect then
-          continue;
-
-        var line_data:=
-          Point_to_string(line_ray.starts) +' / '+
-          Point_to_string(line_ray.ends) +'; '+
-          Point_to_string(intersect);
-        debug_data.Add(line_data);
 
         intersects.add(intersect);
 
@@ -499,12 +472,6 @@ const angle_move = 0.01;
       Add_new_ray(ray2);
   end;
 
-  procedure Add_both_rays_for_debug(ray1,ray2: TVector);
-  begin
-    Add_new_ray(ray1);
-    Add_new_ray(ray2);
-  end;
-
 begin
   for var vertex in vertices do
     begin
@@ -514,13 +481,6 @@ begin
 
       var direct_LOS:= v_middle = v_middle_shortest;
       if not direct_LOS then continue;
-
-      (*
-      if (vertex=TPoint.Create(160,240)) OR (vertex=TPoint.Create(240,240)) then
-        Breakpoint_placeholder
-      else
-        continue;
-      *)
 
       var adjusted_vertex:= Adjusted_point(vertex);
       var angle:= Get_vector_angle(adjusted_vertex);
@@ -533,7 +493,6 @@ begin
       var v_lower__shortest:= Find_closest_intersect(v_lower);
 
       Add_ray_which_can_see_further(v_higher_shortest,v_lower__shortest);
-      //Add_both_rays_for_debug(v_higher_shortest,v_lower__shortest);
     end;
 end;
 
@@ -566,9 +525,6 @@ begin
 
   Cast_rays;
   Sort_rays_by_angle;
-
-  Save_ray_endpoints_into_txt_file('rays2.txt');
-  debug_data.SaveToFile('lines_with_intersects.txt');
 end;
 
 procedure Calculate_vertices;
@@ -603,13 +559,6 @@ procedure Calculate_Visibility_Polygon;
 
 begin
   setLength(visibility_polygon,0);
-
-  (*
-  if use_mouse_as_light then
-    visibility_polygon[0]:= TPointF(light_position).Round
-  else
-    visibility_polygon[0]:= TPointF.Zero.Round;
-  *)
 
   for var i:= 0 to rays.Count-1 do
     begin
@@ -736,11 +685,7 @@ end;
 
 procedure Move_light(X,Y: single);
 begin
-  if use_mouse_as_light then
-    light_position:= TPoint.Create(round(X),round(Y))
-  else
-    light_position:= TPoint.Zero;
-
+  light_position:= TPoint.Create(round(X),round(Y));
   Update_dynamic_objects;
 end;
 
@@ -895,6 +840,7 @@ end;
 
 procedure Update_stats_text;
 begin
+  if not display_stats then exit;
   var mouse_over_tile:= Mouse_coords_to_tile_pos(mouse_position.X,mouse_position.Y);
 
   (*
@@ -942,6 +888,9 @@ end;
 procedure TForm1.Viewport3D1MouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Single);
 begin
+  display_stats:= false;
+  form1.Text1.Visible:= display_stats;
+
   case button of
     TMouseButton.mbLeft: Determine_painting_mode(X,Y);
   end;
@@ -950,6 +899,9 @@ end;
 procedure TForm1.Viewport3D1MouseUp(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Single);
 begin
+  display_stats:= true;
+  form1.Text1.Visible:= display_stats;
+
   case button of
     TMouseButton.mbLeft: Work_with_tile_under_cursor( Mouse_coords_to_tile_pos(X, Y) );
     TMouseButton.mbRight:Move_light(X,Y);
@@ -990,7 +942,7 @@ begin
   form1.Viewport3D1.Canvas.BeginScene;
   form1.Viewport3D1.Canvas.Clear(TAlphaColorRec.Teal);
   Draw_Tiles;
-  Draw_Edges;
+  //Draw_Edges;
   //Draw_Vertices;
   //Draw_Polygons;
   form1.Viewport3D1.Canvas.EndScene;
