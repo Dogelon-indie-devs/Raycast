@@ -76,8 +76,8 @@ const
 var
   Form1: TForm1;
   painting_tiles: boolean;
-  mouse_position: TPoint;
-  light_position: TPoint;
+  mouse_position: TPointF;
+  light_position: TPointF;
   tile_size: integer;
   tile_count: integer;
   visibility_polygon_points: integer;
@@ -109,7 +109,7 @@ begin
 
 end;
 
-function Get_vector_angle(ray: TVector): Double;
+function Get_vector_angle(ray: TVector): Extended;
 begin
   var ray_as_point:= TPointF(ray);
   result:= ArcTan2(ray_as_point.Y,ray_as_point.X);
@@ -212,6 +212,7 @@ var points: TList<TPointF>;
         var p3:= points[i-2];
 
         if not Points_on_same_axis(p1,p3) then continue;
+        if vertices.Contains(p2.Round)    then continue;
 
         var middle_point_unnecessary:=
           Points_on_same_axis(p1,p2) AND Points_on_same_axis(p2,p3);
@@ -252,10 +253,11 @@ begin
   points:= TList<TPointF>.Create;
   try
     Move_points_to_list;
+    Export_vis_poly_points_to_file('poly_points1.txt');
     Remove_duplicate_points;
     Skip_unnecessary_points_on_edges;
     Move_points_back_to_polygon;
-    Export_vis_poly_points_to_file('poly_points.txt');
+    Export_vis_poly_points_to_file('poly_points2.txt');
 
   finally
     points.Free;
@@ -267,6 +269,21 @@ begin
   var lightBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
   form1.Viewport3D1.Canvas.Fill:= lightBrush;
   form1.Viewport3D1.Canvas.FillPolygon(visibility_polygon,0.5);
+
+  const circle_radius = 2;
+  var purpleBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Purple);
+  purpleBrush.Thickness:=1;
+
+  for var polypoint in visibility_polygon do
+    begin
+      var rect:= TRectF.Create(
+        polypoint.X-circle_radius,
+        polypoint.Y-circle_radius,
+        polypoint.X+circle_radius,
+        polypoint.Y+circle_radius
+      );
+      form1.Viewport3D1.Canvas.DrawEllipse(rect,1,purpleBrush);
+    end;
 end;
 
 procedure Draw_Intersects;
@@ -363,7 +380,7 @@ function Add_new_ray(ray:TVector): boolean;
 begin
   result:= true;
   if (ray = TVector.Zero) OR
-  //   (ray.Length>5000)    OR
+     (ray.Length>5000)    OR
      (rays.Contains(ray)) then result:= false;
 
   if result then
@@ -373,9 +390,9 @@ begin
 end;
 
 function Compensate_vector_for_light_position(ray:TVector): TVector;
-var point,compensated_point: TPoint;
+var point,compensated_point: TPointF;
 begin
-  point:= TPointF(ray).Round;
+  point:= TPointF(ray);
   compensated_point:= point - light_position;
   result:= TVector.Create(compensated_point);
 end;
@@ -459,8 +476,8 @@ begin
 end;
 
 procedure Cast_rays;
-const new_vector_length = 500;
-const angle_move = 0.001;
+const new_vector_length = 2000;
+const angle_move = 0.01;
 
   function Create_new_ray(angle: double): TVector;
   begin
@@ -498,10 +515,12 @@ begin
       var direct_LOS:= v_middle = v_middle_shortest;
       if not direct_LOS then continue;
 
+      (*
       if (vertex=TPoint.Create(160,240)) OR (vertex=TPoint.Create(240,240)) then
         Breakpoint_placeholder
       else
         continue;
+      *)
 
       var adjusted_vertex:= Adjusted_point(vertex);
       var angle:= Get_vector_angle(adjusted_vertex);
@@ -554,7 +573,7 @@ end;
 
 procedure Calculate_vertices;
 
-  function Vertex_already_known(tested_vertex: TPoint): boolean;
+  function Vertex_already_known(tested_vertex: TPointF): boolean;
   begin
     result:= false;
     for var vertex in vertices do
@@ -575,36 +594,43 @@ begin
 end;
 
 procedure Calculate_Visibility_Polygon;
+
+  procedure Add_point_to_vis_polygon(point: TPointF);
+  begin
+    setLength(visibility_polygon,length(visibility_polygon)+1);
+    visibility_polygon[length(visibility_polygon)-1]:= point;
+  end;
+
 begin
   setLength(visibility_polygon,0);
-  setLength(visibility_polygon,rays.Count+1);
 
+  (*
   if use_mouse_as_light then
     visibility_polygon[0]:= TPointF(light_position).Round
   else
     visibility_polygon[0]:= TPointF.Zero.Round;
+  *)
 
   for var i:= 0 to rays.Count-1 do
     begin
-      var ray:= rays[i];
-      var point:= TPointF(ray).Round;
-      visibility_polygon[i+1]:= point;
+      var ray_point:= TPointF( rays[i] );
+      Add_point_to_vis_polygon(ray_point);
     end;
 
   Simplify_visibility_polygon;
 end;
 
 procedure Calculate_polygons;
-var new_endpoint: TPoint;
+var new_endpoint: TPointF;
     polygon: TPolygon;
 
-  procedure Add_point_to_polygon(point: TPoint);
+  procedure Add_point_to_polygon(point: TPointF);
   begin
     setLength(polygon,length(polygon)+1);
     polygon[length(polygon)-1]:= point;
   end;
 
-  function Find_attached_edge(last_endpoint: TPoint; polyEdges: TObjectList<TEdge>): TEdge;
+  function Find_attached_edge(last_endpoint: TPointF; polyEdges: TObjectList<TEdge>): TEdge;
   begin
     for var edge in polyEdges do
       begin
@@ -951,8 +977,8 @@ begin
   Draw_fixed_objects;
 
   form1.Viewport3D1.Canvas.BeginScene;
-  Draw_Rays;
-  Draw_Intersects;
+  //Draw_Rays;
+  //Draw_Intersects;
   Draw_Visibility_Polygon;
   form1.Viewport3D1.Canvas.EndScene;
 end;
@@ -965,7 +991,7 @@ begin
   form1.Viewport3D1.Canvas.Clear(TAlphaColorRec.Teal);
   Draw_Tiles;
   Draw_Edges;
-  Draw_Vertices;
+  //Draw_Vertices;
   //Draw_Polygons;
   form1.Viewport3D1.Canvas.EndScene;
 end;
