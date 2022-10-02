@@ -68,6 +68,20 @@ type
     procedure   Remove(position: TPoint);
   end;
 
+  TLayers = class
+    dict: TObjectDictionary<string,TBitmap>;
+    buffer: TBitmap;
+    rect: TRect;
+    default_brush: TBrush;
+    invalidated: boolean;
+    procedure Push_to_buffer(bitmapName: string; opacity: single = 1);
+    procedure Push_all;
+    procedure Clear_Canvas;
+    procedure Invalidate;
+    constructor Create;
+    destructor  Destroy; override;
+  end;
+
 const
   Grid_size = 20;
   Form_size = 800;
@@ -90,6 +104,7 @@ var
   intersects: TList<TPointF>;
   visibility_polygon: TPolygon;
 
+  Layers: TLayers;
   debug_data: TStringList;
 
 
@@ -97,10 +112,12 @@ procedure Draw_dynamic_objects;
 procedure Draw_fixed_objects;
 procedure Update_dynamic_objects;
 procedure Update_fixed_objects;
+procedure Redraw_scene;
 
 implementation
 
 {$R *.fmx}
+
 
 // loosely following tutorial from https://www.youtube.com/watch?v=fc3nnG2CG8U
 
@@ -160,6 +177,8 @@ begin
   setLength(tiles, 20, 20);
   tile_size:= round(Form1.Viewport3D1.Width / Grid_size); // 40x40;
 
+  Layers:= TLayers.Create;
+
   edges:=       TObjectList<TEdge>.Create(true);
   vertices:=    TList<TPoint>.Create;
   polygons:=    TList<TPolygon>.Create;
@@ -204,21 +223,30 @@ var points: TList<TPointF>;
   end;
 
   procedure Skip_unnecessary_points_on_edges;
+
+    function Middle_point_unnecessary(p1,p2,p3: TPointF): boolean;
+    begin
+      result:= false;
+      if not Points_on_same_axis(p1,p3) then exit;
+      if vertices.Contains(p2.Round)    then exit;
+
+      result:= Points_on_same_axis(p1,p2) AND Points_on_same_axis(p2,p3);
+    end;
+
   begin
     for var i:= points.Count-1 downto 2 do
       begin
         var p1:= points[i];
         var p2:= points[i-1];
         var p3:= points[i-2];
-
-        if not Points_on_same_axis(p1,p3) then continue;
-        if vertices.Contains(p2.Round)    then continue;
-
-        var middle_point_unnecessary:=
-          Points_on_same_axis(p1,p2) AND Points_on_same_axis(p2,p3);
-        if middle_point_unnecessary then
+        if Middle_point_unnecessary(p1,p2,p3) then
           points.Remove(p2);
       end;
+
+    (*
+    if Middle_point_unnecessary(points[0],p2,p3) then
+      points.Remove(p2);
+    *)
   end;
 
   procedure Export_vis_poly_points_to_file(filename: string);
@@ -256,6 +284,7 @@ begin
     Remove_duplicate_points;
     Skip_unnecessary_points_on_edges;
     Move_points_back_to_polygon;
+    Export_vis_poly_points_to_file('poly.txt');
 
   finally
     points.Free;
@@ -264,24 +293,32 @@ end;
 
 procedure Draw_Visibility_Polygon;
 begin
-  var lightBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
-  form1.Viewport3D1.Canvas.Fill:= lightBrush;
-  form1.Viewport3D1.Canvas.FillPolygon(visibility_polygon,0.5);
+  var layer:= Layers.dict.Items['vis_poly'];
+  layer.Canvas.BeginScene;
+  try
+    layer.Canvas.Clear(TAlphaColorRec.Null);
+    var lightBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
+    layer.Canvas.Fill:= lightBrush;
+    layer.Canvas.FillPolygon(visibility_polygon,1);
 
-  const circle_radius = 2;
-  var purpleBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Purple);
-  purpleBrush.Thickness:=1;
+    const circle_radius = 2;
+    var purpleBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Purple);
+    purpleBrush.Thickness:=1;
 
-  for var polypoint in visibility_polygon do
-    begin
-      var rect:= TRectF.Create(
-        polypoint.X-circle_radius,
-        polypoint.Y-circle_radius,
-        polypoint.X+circle_radius,
-        polypoint.Y+circle_radius
-      );
-      form1.Viewport3D1.Canvas.DrawEllipse(rect,1,purpleBrush);
-    end;
+    for var polypoint in visibility_polygon do
+      begin
+        var rect:= TRectF.Create(
+          polypoint.X-circle_radius,
+          polypoint.Y-circle_radius,
+          polypoint.X+circle_radius,
+          polypoint.Y+circle_radius
+        );
+        layer.Canvas.DrawEllipse(rect,1,purpleBrush);
+      end;
+
+  finally
+    layer.Canvas.EndScene;
+  end;
 end;
 
 procedure Draw_Intersects;
@@ -344,17 +381,25 @@ end;
 
 procedure Draw_Tiles;
 begin
-  var blueBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Blue);
+  var layer:= Layers.dict.Items['tiles'];
+  layer.Canvas.BeginScene;
+  try
+    layer.Canvas.Clear(TAlphaColorRec.Null);
+    var blueBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Blue);
 
-  for var x := 0 to Grid_size-1 do
-  for var y := 0 to Grid_size-1 do
-    begin
-      var tile:= tiles[X,Y];
-      if tile=nil then continue;
+    for var x := 0 to Grid_size-1 do
+    for var y := 0 to Grid_size-1 do
+      begin
+        var tile:= tiles[X,Y];
+        if tile=nil then continue;
 
-      var rect:= TRectF.Create(tile.origin,tile_size,tile_size);
-      form1.Viewport3D1.Canvas.FillRect(rect,1,blueBrush);
-    end;
+        var rect:= TRectF.Create(tile.origin,tile_size,tile_size);
+        layer.Canvas.FillRect(rect,1,blueBrush);
+      end;
+
+  finally
+    layer.Canvas.EndScene;
+  end;
 end;
 
 procedure Draw_Polygons;
@@ -685,8 +730,12 @@ end;
 
 procedure Move_light(X,Y: single);
 begin
-  light_position:= TPoint.Create(round(X),round(Y));
+  var new_pos:= TPoint.Create(round(X),round(Y));
+  if light_position = new_pos then exit;
+
+  light_position:= new_pos;
   Update_dynamic_objects;
+  Layers.Invalidate;
 end;
 
 { TTile }
@@ -871,7 +920,7 @@ begin
   if form1.Viewport3D1.Tag=0 then
     begin
       form1.Viewport3D1.Tag:= 1;
-      Draw_fixed_objects;
+      Redraw_scene;
     end;
 
   Update_stats_text;
@@ -906,6 +955,8 @@ begin
     TMouseButton.mbLeft: Work_with_tile_under_cursor( Mouse_coords_to_tile_pos(X, Y) );
     TMouseButton.mbRight:Move_light(X,Y);
   end;
+
+  Redraw_scene;
 end;
 
 procedure TForm1.Viewport3D1MouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
@@ -921,39 +972,34 @@ begin
       Move_light(X,Y);
     end;
 
+  Redraw_scene;
   Update_stats_text;
 end;
 
 procedure Draw_dynamic_objects;
 begin
-  Draw_fixed_objects;
+  if form1.Viewport3D1.Tag=0 then exit;
 
-  form1.Viewport3D1.Canvas.BeginScene;
   //Draw_Rays;
   //Draw_Intersects;
   Draw_Visibility_Polygon;
-  form1.Viewport3D1.Canvas.EndScene;
 end;
 
 procedure Draw_fixed_objects;
 begin
   if form1.Viewport3D1.Tag=0 then exit;
 
-  form1.Viewport3D1.Canvas.BeginScene;
-  form1.Viewport3D1.Canvas.Clear(TAlphaColorRec.Teal);
   Draw_Tiles;
   //Draw_Edges;
   //Draw_Vertices;
   //Draw_Polygons;
-  form1.Viewport3D1.Canvas.EndScene;
 end;
 
 procedure Update_dynamic_objects;
 begin
   Calculate_Rays;
   Calculate_Visibility_Polygon;
-
-  Draw_dynamic_objects;
+  Layers.Invalidate;
 end;
 
 procedure Update_fixed_objects;
@@ -963,6 +1009,86 @@ begin
   //Calculate_polygons;
 
   Draw_fixed_objects;
+  Layers.Invalidate;
+end;
+
+procedure Redraw_scene;
+begin
+  Draw_fixed_objects;
+  Draw_dynamic_objects;
+
+  Layers.Push_all;
+end;
+
+{ TLayers }
+
+constructor TLayers.Create;
+begin
+  dict:= TObjectDictionary<string,TBitmap>.Create;
+  with form1.Viewport3D1.Canvas do
+    begin
+      rect:= TRect.Create(0,0,Width,Height);
+      buffer:= TBitmap.Create(rect.Width,rect.Height);
+
+      dict.Add('tiles',     TBitmap.Create(Width,Height));
+      dict.Add('edges',     TBitmap.Create(Width,Height));
+      dict.Add('vertices',  TBitmap.Create(Width,Height));
+      dict.Add('polygons',  TBitmap.Create(Width,Height));
+      dict.Add('rays',      TBitmap.Create(Width,Height));
+      dict.Add('intersects',TBitmap.Create(Width,Height));
+      dict.Add('vis_poly',  TBitmap.Create(Width,Height));
+    end;
+
+  default_brush:= TBrush.Create(TBrushKind.Solid,TAlphaColorRec.Teal);
+  invalidated:= true;
+end;
+
+destructor TLayers.Destroy;
+begin
+  dict.Free;
+  inherited;
+end;
+
+procedure TLayers.Invalidate;
+begin
+  invalidated:= true;
+end;
+
+procedure TLayers.Clear_Canvas;
+begin
+  buffer.Canvas.BeginScene;
+  buffer.Canvas.Clear(TAlphaColorRec.Teal);
+  buffer.Canvas.Flush;
+  buffer.Canvas.EndScene;
+end;
+
+procedure TLayers.Push_all;
+begin
+  if invalidated then
+    begin
+      invalidated:= false;
+      Clear_Canvas;
+      Push_to_buffer('tiles');
+      Push_to_buffer('vis_poly',0.5);
+
+      with form1.Viewport3D1.Canvas do
+        begin
+          BeginScene;
+          DrawBitmap(buffer,rect,rect,1,true);
+          EndScene;
+        end;
+    end;
+end;
+
+procedure TLayers.Push_to_buffer(bitmapName: string; opacity: single = 1);
+begin
+  var layer:= Layers.dict.Items[bitmapName];
+
+  buffer.Canvas.BeginScene;
+  buffer.Canvas.DrawBitmap(layer,rect,rect,opacity,true);
+  buffer.Canvas.EndScene;
+
+  //layer.SaveToFile(bitmapName+'.png');
 end;
 
 initialization
