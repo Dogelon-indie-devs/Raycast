@@ -8,6 +8,7 @@ uses
   System.UITypes,
   System.Classes,
   System.Variants,
+  System.Threading,
   System.Math,
   System.Math.Vectors,
   Generics.Collections,
@@ -91,8 +92,8 @@ var
   painting_tiles: boolean;
   mouse_position: TPointF;
   light_position: TPointF;
-  tile_size: integer;
-  tile_count: integer;
+  tile_size,tile_count: integer;
+  ray_count,intersect_count: integer;
   visibility_polygon_points: integer;
   display_stats: boolean;
 
@@ -100,11 +101,12 @@ var
   edges:      TObjectList<TEdge>;
   vertices:   TList<TPoint>;
   polygons:   TList<TPolygon>;
-  rays:       TList<TVector>;
-  intersects: TList<TPointF>;
+  rays:       TThreadList<TVector>;
+  intersects: TThreadList<TPointF>;
   visibility_polygon: TPolygon;
 
   Layers: TLayers;
+  Raycast_tasks: array of ITask;
   debug_data: TStringList;
 
 
@@ -132,33 +134,6 @@ begin
   result:= ArcTan2(ray_as_point.Y,ray_as_point.X);
 end;
 
-procedure Save_ray_endpoints_into_txt_file(filename:string);
-begin
-  var rays_points:= TStringList.Create;
-  try
-    for var ray in rays do
-      begin
-        var point:= TPointF(ray).Round;
-        var angle:= Get_vector_angle(ray);
-        var deg:= radtodeg( Get_vector_angle(ray) );
-        var len:= round(ray.Length);
-
-        rays_points.Add(
-          point.X.ToString +','+
-          point.Y.ToString +', '+
-          'len: '+len.ToString +', '+
-          'angle: '+angle.ToString +', '+
-          'deg: '+deg.ToString
-          );
-      end;
-
-    //rays_points.SaveToFile(filename);
-
-  finally
-    rays_points.Free;
-  end;
-end;
-
 procedure Place_scene_tiles;
 begin
   const max_value = Grid_size-1;
@@ -182,8 +157,8 @@ begin
   edges:=       TObjectList<TEdge>.Create(true);
   vertices:=    TList<TPoint>.Create;
   polygons:=    TList<TPolygon>.Create;
-  rays:=        TList<TVector>.Create;
-  intersects:=  TList<TPointF>.Create;
+  rays:=        TThreadList<TVector>.Create;
+  intersects:=  TThreadList<TPointF>.Create;
 
   TTile.Create(TPoint.Create(4,4));
   TTile.Create(TPoint.Create(5,4));
@@ -223,6 +198,7 @@ var points: TList<TPointF>;
   end;
 
   procedure Skip_unnecessary_points_on_edges;
+  var p1,p2,p3: TPointF;
 
     function Middle_point_unnecessary(p1,p2,p3: TPointF): boolean;
     begin
@@ -233,20 +209,23 @@ var points: TList<TPointF>;
       result:= Points_on_same_axis(p1,p2) AND Points_on_same_axis(p2,p3);
     end;
 
+    function Safe_get_point(index: integer): TPointF;
+    begin
+      if index<0 then
+         index:= points.Count+index;
+
+      result:= points[index];
+    end;
+
   begin
-    for var i:= points.Count-1 downto 2 do
+    for var i:= points.Count-1 downto 0 do
       begin
-        var p1:= points[i];
-        var p2:= points[i-1];
-        var p3:= points[i-2];
+        p1:= Safe_get_point(i);
+        p2:= Safe_get_point(i-1);
+        p3:= Safe_get_point(i-2);
         if Middle_point_unnecessary(p1,p2,p3) then
           points.Remove(p2);
       end;
-
-    (*
-    if Middle_point_unnecessary(points[0],p2,p3) then
-      points.Remove(p2);
-    *)
   end;
 
   procedure Export_vis_poly_points_to_file(filename: string);
@@ -281,10 +260,11 @@ begin
   points:= TList<TPointF>.Create;
   try
     Move_points_to_list;
+    //Export_vis_poly_points_to_file('poly1.txt');
     Remove_duplicate_points;
     Skip_unnecessary_points_on_edges;
     Move_points_back_to_polygon;
-    Export_vis_poly_points_to_file('poly.txt');
+    //Export_vis_poly_points_to_file('poly2.txt');
 
   finally
     points.Free;
@@ -328,16 +308,22 @@ begin
   var greenBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Lime);
   greenBrush.Thickness:=1;
 
-  for var intersect in intersects do
-    begin
-      var rect:= TRectF.Create(
-        intersect.X-circle_radius,
-        intersect.Y-circle_radius,
-        intersect.X+circle_radius,
-        intersect.Y+circle_radius
-      );
-      form1.Viewport3D1.Canvas.DrawEllipse(rect,1,greenBrush);
-    end;
+  var list:= intersects.LockList;
+  try
+    for var intersect in list do
+      begin
+        var rect:= TRectF.Create(
+          intersect.X-circle_radius,
+          intersect.Y-circle_radius,
+          intersect.X+circle_radius,
+          intersect.Y+circle_radius
+        );
+        form1.Viewport3D1.Canvas.DrawEllipse(rect,1,greenBrush);
+      end;
+
+  finally
+    intersects.UnlockList;
+  end;
 end;
 
 procedure Draw_Rays;
@@ -348,8 +334,13 @@ begin
 
   light_point:= TPointF(light_position);
 
-  for var ray in rays do
+  var list:= rays.LockList;
+  try
+  for var ray in list do
     form1.Viewport3D1.Canvas.DrawLine(light_point,TPointF(ray),1,yellowBrush);
+  finally
+    rays.UnlockList;
+  end;
 end;
 
 procedure Draw_Vertices;
@@ -415,13 +406,16 @@ function Add_new_ray(ray:TVector): boolean;
 begin
   result:= true;
   if (ray = TVector.Zero) OR
-     (ray.Length>5000)    OR
-     (rays.Contains(ray)) then result:= false;
+     (ray.Length>5000)    then exit(false);
 
-  if result then
-    Rays.Add(ray)
-  else
-    breakpoint_placeholder;
+  var list:= rays.LockList;
+  try
+     if (list.Contains(ray)) then exit(false);
+  finally
+    rays.UnlockList;
+  end;
+
+  Rays.Add(ray);
 end;
 
 function Compensate_vector_for_light_position(ray:TVector): TVector;
@@ -493,39 +487,39 @@ begin
   result:= Distance_light_to_point(vector_point);
 end;
 
-procedure Cast_rays;
 const new_vector_length = 2000;
 const angle_move = 0.01;
 
-  function Create_new_ray(angle: double): TVector;
-  begin
-    var rdx:= new_vector_length * cos(angle);
-    var rdy:= new_vector_length * sin(angle);
-    var adjust_for_light_pos:= TPointF.Create(rdx,rdy) + light_position;
-    var raw_vector:= TVector.Create(adjust_for_light_pos);
-    result:= raw_vector;
-  end;
-
-  procedure Add_ray_which_can_see_further(ray1,ray2: TVector);
-  begin
-    var ray1_len:= Distance_light_to_unadjusted_vector(ray1);
-    var ray2_len:= Distance_light_to_unadjusted_vector(ray2);
-
-    if ray1_len > ray2_len then
-      Add_new_ray(ray1)
-    else
-      Add_new_ray(ray2);
-  end;
-
+function Create_new_ray(angle: double): TVector;
 begin
-  for var vertex in vertices do
+  var rdx:= new_vector_length * cos(angle);
+  var rdy:= new_vector_length * sin(angle);
+  var adjust_for_light_pos:= TPointF.Create(rdx,rdy) + light_position;
+  var raw_vector:= TVector.Create(adjust_for_light_pos);
+  result:= raw_vector;
+end;
+
+procedure Add_ray_which_can_see_further(ray1,ray2: TVector);
+begin
+  var ray1_len:= Distance_light_to_unadjusted_vector(ray1);
+  var ray2_len:= Distance_light_to_unadjusted_vector(ray2);
+
+  if ray1_len > ray2_len then
+    Add_new_ray(ray1)
+  else
+    Add_new_ray(ray2);
+end;
+
+procedure Start_raycast_task(index: integer; vertex: TPointF);
+begin
+  Raycast_tasks[index] := TTask.Run(procedure ()
     begin
       var v_middle:= TVector.Create(vertex);
       var v_middle_shortest:= Find_closest_intersect(v_middle);
       Add_new_ray(v_middle_shortest);
 
       var direct_LOS:= v_middle = v_middle_shortest;
-      if not direct_LOS then continue;
+      if not direct_LOS then exit;
 
       var adjusted_vertex:= Adjusted_point(vertex);
       var angle:= Get_vector_angle(adjusted_vertex);
@@ -538,7 +532,34 @@ begin
       var v_lower__shortest:= Find_closest_intersect(v_lower);
 
       Add_ray_which_can_see_further(v_higher_shortest,v_lower__shortest);
-    end;
+    end);
+end;
+
+procedure Cast_rays;
+
+begin
+  Setlength(Raycast_tasks, vertices.Count);
+
+  TParallel.For(0, vertices.Count-1, procedure(index: Integer)
+  begin
+    Start_raycast_task(index,vertices[index]);
+  end);
+
+  TTask.WaitForAll(Raycast_tasks);
+
+  var list:= rays.LockList;
+  try
+    ray_count:= list.Count;
+  finally
+    rays.UnlockList;
+  end;
+
+  var list2:= intersects.LockList;
+  try
+    intersect_count:= list2.Count;
+  finally
+    intersects.UnlockList;
+  end;
 end;
 
 procedure Calculate_Rays;
@@ -560,7 +581,12 @@ procedure Calculate_Rays;
         result:= floor(raw);
     end;
 
-    rays.Sort(TComparer<TVector>.Construct(Comparison));
+    var list:= rays.LockList;
+    try
+      list.Sort(TComparer<TVector>.Construct(Comparison));
+    finally
+      rays.UnlockList;
+    end;
   end;
 
 begin
@@ -605,11 +631,16 @@ procedure Calculate_Visibility_Polygon;
 begin
   setLength(visibility_polygon,0);
 
-  for var i:= 0 to rays.Count-1 do
-    begin
-      var ray_point:= TPointF( rays[i] );
-      Add_point_to_vis_polygon(ray_point);
-    end;
+  var list:= rays.LockList;
+  try
+    for var ray in list do
+      begin
+        var ray_point:= TPointF(ray);
+        Add_point_to_vis_polygon(ray_point);
+      end;
+  finally
+    rays.UnlockList;
+  end;
 
   Simplify_visibility_polygon;
 end;
@@ -907,8 +938,8 @@ begin
     'Edges: '+      Edges.count.ToString +sLineBreak+
     'Vertices: '+   Vertices.count.ToString +sLineBreak+
     'Polygons: '+   Polygons.count.ToString +sLineBreak+
-    'Rays: '+       rays.Count.ToString +sLineBreak+
-    'Intersects: '+ intersects.Count.ToString +sLineBreak+
+    'Rays: '+       ray_count.ToString +sLineBreak+
+    'Intersects: '+ intersect_count.ToString +sLineBreak+
     'Vis poly raw: '+visibility_polygon_points.ToString +sLineBreak+
     'Vis poly simplified: '+length(visibility_polygon).ToString;
 
