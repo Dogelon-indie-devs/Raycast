@@ -72,12 +72,14 @@ type
   TLayers = class
     dict: TObjectDictionary<string,TBitmap>;
     buffer: TBitmap;
+    light: TBitmap;
     rect: TRect;
     default_brush: TBrush;
     invalidated: boolean;
     procedure Push_to_buffer(bitmapName: string; opacity: single = 1);
     procedure Push_all;
     procedure Clear_Canvas;
+    procedure Draw_light;
     procedure Invalidate;
     constructor Create;
     destructor  Destroy; override;
@@ -277,10 +279,11 @@ begin
   layer.Canvas.BeginScene;
   try
     layer.Canvas.Clear(TAlphaColorRec.Null);
-    var lightBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Yellow);
+    var lightBrush:= TBrush.Create(TBrushKind.Solid, TAlphaColorRec.Black);
     layer.Canvas.Fill:= lightBrush;
     layer.Canvas.FillPolygon(visibility_polygon,1);
 
+    (*
     const circle_radius = 2;
     var purpleBrush:= TStrokeBrush.Create(TBrushKind.Solid, TAlphaColorRec.Purple);
     purpleBrush.Thickness:=1;
@@ -295,6 +298,7 @@ begin
         );
         layer.Canvas.DrawEllipse(rect,1,purpleBrush);
       end;
+    *)
 
   finally
     layer.Canvas.EndScene;
@@ -757,6 +761,8 @@ begin
       if not tile_already_exists then exit;
       tile.Remove(mouse_over_tile);
     end;
+
+  Redraw_scene;
 end;
 
 procedure Move_light(X,Y: single);
@@ -767,6 +773,7 @@ begin
   light_position:= new_pos;
   Update_dynamic_objects;
   Layers.Invalidate;
+  Redraw_scene;
 end;
 
 { TTile }
@@ -1003,7 +1010,6 @@ begin
       Move_light(X,Y);
     end;
 
-  Redraw_scene;
   Update_stats_text;
 end;
 
@@ -1048,6 +1054,7 @@ begin
   Draw_fixed_objects;
   Draw_dynamic_objects;
 
+  Layers.Invalidate;
   Layers.Push_all;
 end;
 
@@ -1057,18 +1064,20 @@ constructor TLayers.Create;
 begin
   dict:= TObjectDictionary<string,TBitmap>.Create;
   with form1.Viewport3D1.Canvas do
-    begin
-      rect:= TRect.Create(0,0,Width,Height);
-      buffer:= TBitmap.Create(rect.Width,rect.Height);
+    rect:= TRect.Create(0,0,Width,Height);
 
-      dict.Add('tiles',     TBitmap.Create(Width,Height));
-      dict.Add('edges',     TBitmap.Create(Width,Height));
-      dict.Add('vertices',  TBitmap.Create(Width,Height));
-      dict.Add('polygons',  TBitmap.Create(Width,Height));
-      dict.Add('rays',      TBitmap.Create(Width,Height));
-      dict.Add('intersects',TBitmap.Create(Width,Height));
-      dict.Add('vis_poly',  TBitmap.Create(Width,Height));
-    end;
+  buffer:= TBitmap.Create(rect.Width,rect.Height);
+  light := TBitmap.Create(rect.Width,rect.Height);
+  light.LoadFromFile('light.png');
+
+  dict.Add('tiles',     TBitmap.Create(rect.Width,rect.Height));
+  dict.Add('edges',     TBitmap.Create(rect.Width,rect.Height));
+  dict.Add('vertices',  TBitmap.Create(rect.Width,rect.Height));
+  dict.Add('polygons',  TBitmap.Create(rect.Width,rect.Height));
+  dict.Add('rays',      TBitmap.Create(rect.Width,rect.Height));
+  dict.Add('intersects',TBitmap.Create(rect.Width,rect.Height));
+  dict.Add('vis_poly',  TBitmap.Create(rect.Width,rect.Height));
+  dict.Add('light_poly',TBitmap.Create(rect.Width,rect.Height));
 
   default_brush:= TBrush.Create(TBrushKind.Solid,TAlphaColorRec.Teal);
   invalidated:= true;
@@ -1078,6 +1087,46 @@ destructor TLayers.Destroy;
 begin
   dict.Free;
   inherited;
+end;
+
+procedure TLayers.Draw_light;
+var PolyData, LightData : TBitmapData;
+begin
+  var layer_vis_poly:=  Layers.dict.Items['vis_poly'];
+  var layer_light_poly:=Layers.dict.Items['light_poly'];
+
+  var mask:= layer_vis_poly.CreateMask;
+  layer_light_poly.Assign(light);
+  layer_light_poly.ApplyMask(mask,0,0);
+  layer_light_poly.SaveToFile('masked.png');
+  exit;
+
+
+  if not (layer_vis_poly. Map(TMapAccess.ReadWrite,PolyData )) OR
+     not (light.          Map(TMapAccess.Read,     LightData)) then
+     raise Exception.Create('Bitmap mapping failure');
+
+  try
+    for var X := 0 to layer_vis_poly.Width  - 1 do
+    for var Y := 0 to layer_vis_poly.Height - 1 do
+      begin
+        var Pixel:= PolyData.GetPixel(X, Y);
+        case Pixel of
+          TAlphaColorRec.White:
+            begin
+              var lightPixel:= LightData.GetPixel(X, Y);
+              PolyData.SetPixel(X, Y, lightPixel);
+            end;
+          TAlphaColorRec.Black: ;
+          else
+            PolyData.SetPixel(X, Y, TAlphaColorRec.Black);
+        end;
+      end;
+
+  finally
+    layer_vis_poly.   Unmap(PolyData);
+    layer_light_poly. Unmap(LightData);
+  end;
 end;
 
 procedure TLayers.Invalidate;
@@ -1100,7 +1149,8 @@ begin
       invalidated:= false;
       Clear_Canvas;
       Push_to_buffer('tiles');
-      Push_to_buffer('vis_poly',0.5);
+      Draw_light;
+      Push_to_buffer('light_poly',1);
 
       with form1.Viewport3D1.Canvas do
         begin
@@ -1109,6 +1159,8 @@ begin
           EndScene;
         end;
     end;
+
+  buffer.SaveToFile('buffer.png');
 end;
 
 procedure TLayers.Push_to_buffer(bitmapName: string; opacity: single = 1);
@@ -1119,7 +1171,7 @@ begin
   buffer.Canvas.DrawBitmap(layer,rect,rect,opacity,true);
   buffer.Canvas.EndScene;
 
-  //layer.SaveToFile(bitmapName+'.png');
+  layer.SaveToFile(bitmapName+'.png');
 end;
 
 initialization
